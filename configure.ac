@@ -563,6 +563,10 @@ AC_ARG_WITH([hyperv],
   [AS_HELP_STRING([--with-hyperv],
     [add Hyper-V support @<:@default=check@:>@])])
 m4_divert_text([DEFAULTS], [with_hyperv=check])
+AC_ARG_WITH([jailhouse],
+  [AS_HELP_STRING([--with-jailhouse],
+    [add Jailhouse support @<:@default=yes@:>@])])
+m4_divert_text([DEFAULTS], [with_jailhouse=yes])
 AC_ARG_WITH([test],
   [AS_HELP_STRING([--with-test],
     [add test driver support @<:@default=yes@:>@])])
@@ -719,6 +723,16 @@ if test "$with_vmware" = "yes"; then
     AC_DEFINE_UNQUOTED([WITH_VMWARE], 1, [whether VMware driver is enabled])
 fi
 AM_CONDITIONAL([WITH_VMWARE], [test "$with_vmware" = "yes"])
+
+
+dnl
+dnl Checks for the Jailhouse driver
+dnl
+
+if test "$with_jailhouse" = "yes"; then
+    AC_DEFINE_UNQUOTED([WITH_JAILHOUSE], 1, [whether Jailhouse driver is enabled])
+fi
+AM_CONDITIONAL([WITH_JAILHOUSE], [test "$with_jailhouse" = "yes"])
 
 
 dnl
@@ -1085,6 +1099,12 @@ dnl Checks for bhyve driver
 dnl
 
 LIBVIRT_DRIVER_CHECK_BHYVE
+
+dnl
+dnl Checks for Jailhouse driver
+dnl
+
+AM_CONDITIONAL([WITH_JAILHOUSE], [test "$with_jailhouse" = "yes"])
 
 dnl
 dnl check for shell that understands <> redirection without truncation,
@@ -2834,6 +2854,7 @@ AC_MSG_NOTICE([      ESX: $with_esx])
 AC_MSG_NOTICE([  Hyper-V: $with_hyperv])
 LIBVIRT_DRIVER_RESULT_VZ
 LIBVIRT_DRIVER_RESULT_BHYVE
+AC_MSG_NOTICE([Jailhouse: $with_jailhouse])
 AC_MSG_NOTICE([     Test: $with_test])
 AC_MSG_NOTICE([   Remote: $with_remote])
 AC_MSG_NOTICE([  Network: $with_network])
