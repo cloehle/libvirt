@@ -783,7 +783,7 @@ qemuDomainAttachDeviceDiskLive(virConnectPtr conn,
     const char *driverName = virDomainDiskGetDriver(disk);
     const char *src = virDomainDiskGetSource(disk);
 
-    if (driverName && !STREQ(driverName, "qemu")) {
+    if (driverName && STRNEQ(driverName, "qemu")) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("unsupported driver name '%s' for disk '%s'"),
                        driverName, src);
@@ -1263,11 +1263,11 @@ qemuDomainAttachHostPCIDevice(virQEMUDriverPtr driver,
 
     if (!cfg->relaxedACS)
         flags |= VIR_HOSTDEV_STRICT_ACS_CHECK;
-    if (qemuPrepareHostdevPCIDevices(driver, vm->def->name, vm->def->uuid,
+    if (qemuHostdevPreparePCIDevices(driver, vm->def->name, vm->def->uuid,
                                      &hostdev, 1, priv->qemuCaps, flags) < 0)
         goto cleanup;
 
-    /* this could have been changed by qemuPrepareHostdevPCIDevices */
+    /* this could have been changed by qemuHostdevPreparePCIDevices */
     backend = hostdev->source.subsys.u.pci.backend;
 
     switch ((virDomainHostdevSubsysPCIBackendType) backend) {
@@ -1383,7 +1383,7 @@ qemuDomainAttachHostPCIDevice(virQEMUDriverPtr driver,
     if (releaseaddr)
         qemuDomainReleaseDeviceAddress(vm, hostdev->info, NULL);
 
-    qemuDomainReAttachHostdevDevices(driver, vm->def->name, &hostdev, 1);
+    qemuHostdevReAttachPCIDevices(driver, vm->def->name, &hostdev, 1);
 
     VIR_FREE(devstr);
     VIR_FREE(configfd_name);
@@ -1802,7 +1802,7 @@ qemuDomainAttachMemory(virQEMUDriverPtr driver,
     if (!(devstr = qemuBuildMemoryDeviceStr(mem, vm->def, priv->qemuCaps)))
         goto cleanup;
 
-    qemuDomainMemoryDeviceAlignSize(mem);
+    qemuDomainMemoryDeviceAlignSize(vm->def, mem);
 
     if (qemuBuildMemoryBackendStr(mem->size, mem->pagesize,
                                   mem->targetNode, mem->sourceNodes, NULL,
@@ -1834,8 +1834,7 @@ qemuDomainAttachMemory(virQEMUDriverPtr driver,
     }
 
     event = virDomainEventDeviceAddedNewFromObj(vm, objalias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     /* fix the balloon size if it was set to maximum */
     if (fix_balloon)
@@ -1886,7 +1885,7 @@ qemuDomainAttachHostUSBDevice(virQEMUDriverPtr driver,
     bool teardownlabel = false;
     int ret = -1;
 
-    if (qemuPrepareHostUSBDevices(driver, vm->def->name, &hostdev, 1, 0) < 0)
+    if (qemuHostdevPrepareUSBDevices(driver, vm->def->name, &hostdev, 1, 0) < 0)
         goto cleanup;
 
     added = true;
@@ -1937,7 +1936,7 @@ qemuDomainAttachHostUSBDevice(virQEMUDriverPtr driver,
                                                   vm->def, hostdev, NULL) < 0)
             VIR_WARN("Unable to restore host device labelling on hotplug fail");
         if (added)
-            qemuDomainReAttachHostUSBDevices(driver, vm->def->name, &hostdev, 1);
+            qemuHostdevReAttachUSBDevices(driver, vm->def->name, &hostdev, 1);
     }
     VIR_FREE(devstr);
     return ret;
@@ -1969,7 +1968,7 @@ qemuDomainAttachHostSCSIDevice(virConnectPtr conn,
     if (!cont)
         return -1;
 
-    if (qemuPrepareHostdevSCSIDevices(driver, vm->def->name,
+    if (qemuHostdevPrepareSCSIDevices(driver, vm->def->name,
                                       &hostdev, 1)) {
         virDomainHostdevSubsysSCSIPtr scsisrc = &hostdev->source.subsys.u.scsi;
         if (scsisrc->protocol == VIR_DOMAIN_HOSTDEV_SCSI_PROTOCOL_TYPE_ISCSI) {
@@ -2037,7 +2036,7 @@ qemuDomainAttachHostSCSIDevice(virConnectPtr conn,
     ret = 0;
  cleanup:
     if (ret < 0) {
-        qemuDomainReAttachHostSCSIDevices(driver, vm->def->name, &hostdev, 1);
+        qemuHostdevReAttachSCSIDevices(driver, vm->def->name, &hostdev, 1);
         if (teardowncgroup && qemuTeardownHostdevCgroup(vm, hostdev) < 0)
             VIR_WARN("Unable to remove host device cgroup ACL on hotplug fail");
         if (teardownlabel &&
@@ -2865,8 +2864,7 @@ qemuDomainRemoveDiskDevice(virQEMUDriverPtr driver,
     virDomainAuditDisk(vm, disk->src, NULL, "detach", true);
 
     event = virDomainEventDeviceRemovedNewFromObj(vm, disk->info.alias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     for (i = 0; i < vm->def->ndisks; i++) {
         if (vm->def->disks[i] == disk) {
@@ -2908,8 +2906,7 @@ qemuDomainRemoveControllerDevice(virQEMUDriverPtr driver,
               controller->info.alias, vm, vm->def->name);
 
     event = virDomainEventDeviceRemovedNewFromObj(vm, controller->info.alias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     for (i = 0; i < vm->def->ncontrollers; i++) {
         if (vm->def->controllers[i] == controller) {
@@ -2940,8 +2937,8 @@ qemuDomainRemoveMemoryDevice(virQEMUDriverPtr driver,
     VIR_DEBUG("Removing memory device %s from domain %p %s",
               mem->info.alias, vm, vm->def->name);
 
-    if ((event = virDomainEventDeviceRemovedNewFromObj(vm, mem->info.alias)))
-        qemuDomainEventQueue(driver, event);
+    event = virDomainEventDeviceRemovedNewFromObj(vm, mem->info.alias);
+    qemuDomainEventQueue(driver, event);
 
     if (virAsprintf(&backendAlias, "mem%s", mem->info.alias) < 0)
         return -1;
@@ -2972,7 +2969,7 @@ qemuDomainRemovePCIHostDevice(virQEMUDriverPtr driver,
                               virDomainObjPtr vm,
                               virDomainHostdevDefPtr hostdev)
 {
-    qemuDomainReAttachHostdevDevices(driver, vm->def->name, &hostdev, 1);
+    qemuHostdevReAttachPCIDevices(driver, vm->def->name, &hostdev, 1);
     qemuDomainReleaseDeviceAddress(vm, hostdev->info, NULL);
 }
 
@@ -2981,7 +2978,7 @@ qemuDomainRemoveUSBHostDevice(virQEMUDriverPtr driver,
                               virDomainObjPtr vm,
                               virDomainHostdevDefPtr hostdev)
 {
-    qemuDomainReAttachHostUSBDevices(driver, vm->def->name, &hostdev, 1);
+    qemuHostdevReAttachUSBDevices(driver, vm->def->name, &hostdev, 1);
 }
 
 static void
@@ -2989,7 +2986,7 @@ qemuDomainRemoveSCSIHostDevice(virQEMUDriverPtr driver,
                                virDomainObjPtr vm,
                                virDomainHostdevDefPtr hostdev)
 {
-    qemuDomainReAttachHostSCSIDevices(driver, vm->def->name, &hostdev, 1);
+    qemuHostdevReAttachSCSIDevices(driver, vm->def->name, &hostdev, 1);
 }
 
 static int
@@ -3023,8 +3020,7 @@ qemuDomainRemoveHostDevice(virQEMUDriverPtr driver,
     }
 
     event = virDomainEventDeviceRemovedNewFromObj(vm, hostdev->info->alias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     if (hostdev->parent.type == VIR_DOMAIN_DEVICE_NET) {
         net = hostdev->parent.data.net;
@@ -3138,8 +3134,7 @@ qemuDomainRemoveNetDevice(virQEMUDriverPtr driver,
     virDomainAuditNet(vm, net, NULL, "detach", true);
 
     event = virDomainEventDeviceRemovedNewFromObj(vm, net->info.alias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     for (i = 0; i < vm->def->nnets; i++) {
         if (vm->def->nets[i] == net) {
@@ -3216,8 +3211,7 @@ qemuDomainRemoveChrDevice(virQEMUDriverPtr driver,
         goto cleanup;
 
     event = virDomainEventDeviceRemovedNewFromObj(vm, chr->info.alias);
-    if (event)
-        qemuDomainEventQueue(driver, event);
+    qemuDomainEventQueue(driver, event);
 
     qemuDomainChrRemove(vm->def, chr);
     virDomainChrDefFree(chr);
@@ -3265,8 +3259,8 @@ qemuDomainRemoveRNGDevice(virQEMUDriverPtr driver,
     if (rc < 0)
         goto cleanup;
 
-    if ((event = virDomainEventDeviceRemovedNewFromObj(vm, rng->info.alias)))
-        qemuDomainEventQueue(driver, event);
+    event = virDomainEventDeviceRemovedNewFromObj(vm, rng->info.alias);
+    qemuDomainEventQueue(driver, event);
 
     if ((idx = virDomainRNGFind(vm->def, rng)) >= 0)
         virDomainRNGRemove(vm->def, idx);
@@ -4279,7 +4273,7 @@ qemuDomainDetachMemoryDevice(virQEMUDriverPtr driver,
         return -1;
     }
 
-    qemuDomainMemoryDeviceAlignSize(memdef);
+    qemuDomainMemoryDeviceAlignSize(vm->def, memdef);
 
     if ((idx = virDomainMemoryFindByDef(vm->def, memdef)) < 0) {
         virReportError(VIR_ERR_OPERATION_INVALID, "%s",

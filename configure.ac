@@ -16,7 +16,7 @@ dnl You should have received a copy of the GNU Lesser General Public
 dnl License along with this library.  If not, see
 dnl <http://www.gnu.org/licenses/>.
 
-AC_INIT([libvirt], [1.2.20], [libvir-list@redhat.com], [], [http://libvirt.org])
+AC_INIT([libvirt], [1.2.21], [libvir-list@redhat.com], [], [http://libvirt.org])
 AC_CONFIG_SRCDIR([src/libvirt.c])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADERS([config.h])
@@ -1689,10 +1689,6 @@ if test "$with_pm_utils" = "yes"; then
     AC_DEFINE_UNQUOTED([WITH_PM_UTILS], 1, [whether to use pm-utils])
 fi
 AM_CONDITIONAL([WITH_PM_UTILS], [test "$with_pm_utils" = "yes"])
-
-dnl virsh libraries
-VIRSH_LIBS="$VIRSH_LIBS $READLINE_LIBS"
-AC_SUBST([VIRSH_LIBS])
 
 dnl check if the network driver should be compiled
 

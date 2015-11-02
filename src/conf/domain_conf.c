@@ -106,6 +106,7 @@ VIR_ENUM_IMPL(virDomainTaint, VIR_DOMAIN_TAINT_LAST,
               "custom-dtb");
 
 VIR_ENUM_IMPL(virDomainVirt, VIR_DOMAIN_VIRT_LAST,
+              "none",
               "qemu",
               "kqemu",
               "kvm",
@@ -1155,7 +1156,7 @@ int
 virDomainDefCheckUnsupportedMemoryHotplug(virDomainDefPtr def)
 {
     /* memory hotplug tunables are not supported by this driver */
-    if (def->mem.max_memory > 0 || def->mem.memory_slots > 0) {
+    if (virDomainDefHasMemoryHotplug(def)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                        _("memory hotplug tunables <maxMemory> are not "
                          "supported by this hypervisor driver"));
@@ -2326,6 +2327,59 @@ virDomainIOThreadIDDefArrayFree(virDomainIOThreadIDDefPtr *def,
         virDomainIOThreadIDDefFree(def[i]);
 
     VIR_FREE(def);
+}
+
+
+static int
+virDomainIOThreadIDDefArrayInit(virDomainDefPtr def)
+{
+    int retval = -1;
+    size_t i;
+    ssize_t nxt = -1;
+    virDomainIOThreadIDDefPtr iothrid = NULL;
+    virBitmapPtr thrmap = NULL;
+
+    /* Same value (either 0 or some number), then we have none to fill in or
+     * the iothreadid array was filled from the XML
+     */
+    if (def->iothreads == def->niothreadids)
+        return 0;
+
+    /* iothread's are numbered starting at 1, account for that */
+    if (!(thrmap = virBitmapNew(def->iothreads + 1)))
+        goto error;
+    virBitmapSetAll(thrmap);
+
+    /* Clear 0 since we don't use it, then mark those which are
+     * already provided by the user */
+    ignore_value(virBitmapClearBit(thrmap, 0));
+    for (i = 0; i < def->niothreadids; i++)
+        ignore_value(virBitmapClearBit(thrmap,
+                                       def->iothreadids[i]->iothread_id));
+
+    /* resize array */
+    if (VIR_REALLOC_N(def->iothreadids, def->iothreads) < 0)
+        goto error;
+
+    /* Populate iothreadids[] using the set bit number from thrmap */
+    while (def->niothreadids < def->iothreads) {
+        if ((nxt = virBitmapNextSetBit(thrmap, nxt)) < 0) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("failed to populate iothreadids"));
+            goto error;
+        }
+        if (VIR_ALLOC(iothrid) < 0)
+            goto error;
+        iothrid->iothread_id = nxt;
+        iothrid->autofill = true;
+        def->iothreadids[def->niothreadids++] = iothrid;
+    }
+
+    retval = 0;
+
+ error:
+    virBitmapFree(thrmap);
+    return retval;
 }
 
 
@@ -3688,27 +3742,40 @@ virDomainDefRejectDuplicateControllers(virDomainDefPtr def)
 
 
 /**
- * virDomainDefRemoveDuplicateMetadata:
- * @def: Remove duplicate metadata for this def
+ * virDomainDefMetadataSanitize:
+ * @def: Sanitize metadata for this def
  *
  * This function removes metadata elements in @def that share the namespace.
- * The first metadata entry of every duplicate namespace is kept.
+ * The first metadata entry of every duplicate namespace is kept. Additionally
+ * elements with no namespace are deleted.
  */
 static void
-virDomainDefRemoveDuplicateMetadata(virDomainDefPtr def)
+virDomainDefMetadataSanitize(virDomainDefPtr def)
 {
     xmlNodePtr child;
     xmlNodePtr next;
+    xmlNodePtr dupl;
 
     if (!def || !def->metadata)
         return;
 
-    for (child = def->metadata->children; child; child = child->next) {
+    child = def->metadata->children;
+    while (child) {
+        /* remove metadata entries that don't have any namespace at all */
+        if (!child->ns || !child->ns->href) {
+            dupl = child;
+            child = child->next;
+
+            xmlUnlinkNode(dupl);
+            xmlFreeNode(dupl);
+            continue;
+        }
+
         /* check that every other child of @root doesn't share the namespace of
          * the current one and delete them possibly */
         next = child->next;
         while (next) {
-            xmlNodePtr dupl = NULL;
+            dupl = NULL;
 
             if (child->ns && next->ns &&
                 STREQ_NULLABLE((const char *) child->ns->href,
@@ -3722,21 +3789,41 @@ virDomainDefRemoveDuplicateMetadata(virDomainDefPtr def)
                 xmlFreeNode(dupl);
             }
         }
+
+        child = child->next;
     }
 }
 
 
 static int
-virDomainDefPostParseInternal(virDomainDefPtr def,
-                              virCapsPtr caps ATTRIBUTE_UNUSED)
+virDomainDefPostParseMemory(virDomainDefPtr def,
+                            unsigned int parseFlags)
 {
     size_t i;
+    unsigned long long numaMemory = 0;
+    unsigned long long hotplugMemory = 0;
 
-    /* verify init path for container based domains */
-    if (def->os.type == VIR_DOMAIN_OSTYPE_EXE && !def->os.init) {
-        virReportError(VIR_ERR_XML_ERROR, "%s",
-                       _("init binary must be specified"));
-        return -1;
+    /* Attempt to infer the initial memory size from the sum NUMA memory sizes
+     * in case ABI updates are allowed or the <memory> element wasn't specified */
+    if (def->mem.total_memory == 0 ||
+        parseFlags & VIR_DOMAIN_DEF_PARSE_ABI_UPDATE)
+        numaMemory = virDomainNumaGetMemorySize(def->numa);
+
+    if (numaMemory) {
+        virDomainDefSetMemoryInitial(def, numaMemory);
+    } else {
+        /* calculate the sizes of hotplug memory */
+        for (i = 0; i < def->nmems; i++)
+            hotplugMemory += def->mems[i]->size;
+
+        if (hotplugMemory > def->mem.total_memory) {
+            virReportError(VIR_ERR_XML_ERROR, "%s",
+                           _("Total size of memory devices exceeds the total "
+                             "memory size"));
+            return -1;
+        }
+
+        virDomainDefSetMemoryInitial(def, def->mem.total_memory - hotplugMemory);
     }
 
     if (virDomainDefGetMemoryInitial(def) == 0) {
@@ -3765,6 +3852,27 @@ virDomainDefPostParseInternal(virDomainDefPtr def,
                          "the actual memory size"));
         return -1;
     }
+
+    return 0;
+}
+
+
+static int
+virDomainDefPostParseInternal(virDomainDefPtr def,
+                              virCapsPtr caps ATTRIBUTE_UNUSED,
+                              unsigned int parseFlags)
+{
+    size_t i;
+
+    /* verify init path for container based domains */
+    if (def->os.type == VIR_DOMAIN_OSTYPE_EXE && !def->os.init) {
+        virReportError(VIR_ERR_XML_ERROR, "%s",
+                       _("init binary must be specified"));
+        return -1;
+    }
+
+    if (virDomainDefPostParseMemory(def, parseFlags) < 0)
+        return -1;
 
     /*
      * Some really crazy backcompat stuff for consoles
@@ -3917,7 +4025,7 @@ virDomainDefPostParseInternal(virDomainDefPtr def,
     }
 
     /* clean up possibly duplicated metadata entries */
-    virDomainDefRemoveDuplicateMetadata(def);
+    virDomainDefMetadataSanitize(def);
 
     return 0;
 }
@@ -4256,6 +4364,7 @@ virDomainDefPostParseDeviceIterator(virDomainDefPtr def ATTRIBUTE_UNUSED,
 int
 virDomainDefPostParse(virDomainDefPtr def,
                       virCapsPtr caps,
+                      unsigned int parseFlags,
                       virDomainXMLOptionPtr xmlopt)
 {
     int ret;
@@ -4281,7 +4390,7 @@ virDomainDefPostParse(virDomainDefPtr def,
         return ret;
 
 
-    if ((ret = virDomainDefPostParseInternal(def, caps)) < 0)
+    if ((ret = virDomainDefPostParseInternal(def, caps, parseFlags)) < 0)
         return ret;
 
     return 0;
@@ -5838,133 +5947,6 @@ virDomainDiskFindByBusAndDst(virDomainDefPtr def,
     return NULL;
 }
 
-
-/*
- * Makes sure the @disk differs from @orig_disk only by the source
- * path and nothing else.  Fields that are being checked and the
- * information whether they are nullable (may not be specified) or is
- * taken from the virDomainDiskDefFormat() code.
- */
-bool
-virDomainDiskDiffersSourceOnly(virDomainDiskDefPtr disk,
-                               virDomainDiskDefPtr orig_disk)
-{
-#define CHECK_EQ(field, field_name, nullable)                           \
-    do {                                                                \
-        if (nullable && !disk->field)                                   \
-            break;                                                      \
-        if (disk->field != orig_disk->field) {                          \
-            virReportError(VIR_ERR_OPERATION_UNSUPPORTED,               \
-                           _("cannot modify field '%s' of the disk"),   \
-                           field_name);                                 \
-            return false;                                               \
-        }                                                               \
-    } while (0)
-
-    CHECK_EQ(device, "device", false);
-    CHECK_EQ(cachemode, "cache", true);
-    CHECK_EQ(error_policy, "error_policy", true);
-    CHECK_EQ(rerror_policy, "rerror_policy", true);
-    CHECK_EQ(iomode, "io", true);
-    CHECK_EQ(ioeventfd, "ioeventfd", true);
-    CHECK_EQ(event_idx, "event_idx", true);
-    CHECK_EQ(copy_on_read, "copy_on_read", true);
-    CHECK_EQ(discard, "discard", true);
-    CHECK_EQ(iothread, "iothread", true);
-
-    if (disk->geometry.cylinders &&
-        disk->geometry.heads &&
-        disk->geometry.sectors) {
-        CHECK_EQ(geometry.cylinders, "geometry cylinders", false);
-        CHECK_EQ(geometry.heads, "geometry heads", false);
-        CHECK_EQ(geometry.sectors, "geometry sectors", false);
-        CHECK_EQ(geometry.trans, "BIOS-translation-modus", true);
-    }
-
-    CHECK_EQ(blockio.logical_block_size,
-             "blockio logical_block_size", false);
-    CHECK_EQ(blockio.physical_block_size,
-             "blockio physical_block_size", false);
-
-    if (disk->bus == VIR_DOMAIN_DISK_BUS_USB)
-        CHECK_EQ(removable, "removable", true);
-
-    CHECK_EQ(blkdeviotune.total_bytes_sec,
-             "blkdeviotune total_bytes_sec",
-             true);
-    CHECK_EQ(blkdeviotune.read_bytes_sec,
-             "blkdeviotune read_bytes_sec",
-             true);
-    CHECK_EQ(blkdeviotune.write_bytes_sec,
-             "blkdeviotune write_bytes_sec",
-             true);
-    CHECK_EQ(blkdeviotune.total_iops_sec,
-             "blkdeviotune total_iops_sec",
-             true);
-    CHECK_EQ(blkdeviotune.read_iops_sec,
-             "blkdeviotune read_iops_sec",
-             true);
-    CHECK_EQ(blkdeviotune.write_iops_sec,
-             "blkdeviotune write_iops_sec",
-             true);
-    CHECK_EQ(blkdeviotune.total_bytes_sec_max,
-             "blkdeviotune total_bytes_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.read_bytes_sec_max,
-             "blkdeviotune read_bytes_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.write_bytes_sec_max,
-             "blkdeviotune write_bytes_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.total_iops_sec_max,
-             "blkdeviotune total_iops_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.read_iops_sec_max,
-             "blkdeviotune read_iops_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.write_iops_sec_max,
-             "blkdeviotune write_iops_sec_max",
-             true);
-    CHECK_EQ(blkdeviotune.size_iops_sec,
-             "blkdeviotune size_iops_sec",
-             true);
-
-    CHECK_EQ(transient, "transient", true);
-
-    if (disk->serial && STRNEQ_NULLABLE(disk->serial, orig_disk->serial)) {
-        virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
-                       _("cannot modify field '%s' of the disk"),
-                       "serial");
-        return false;
-    }
-
-    if (disk->wwn && STRNEQ_NULLABLE(disk->wwn, orig_disk->wwn)) {
-        virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
-                       _("cannot modify field '%s' of the disk"),
-                       "wwn");
-        return false;
-    }
-
-    if (disk->vendor && STRNEQ_NULLABLE(disk->vendor, orig_disk->vendor)) {
-        virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
-                       _("cannot modify field '%s' of the disk"),
-                       "vendor");
-        return false;
-    }
-
-    if (disk->product && STRNEQ_NULLABLE(disk->product, orig_disk->product)) {
-        virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
-                       _("cannot modify field '%s' of the disk"),
-                       "product");
-        return false;
-    }
-
-    CHECK_EQ(info.bootIndex, "boot order", true);
-
-#undef CHECK_EQ
-
-    return true;
-}
 
 int
 virDomainDiskDefAssignAddress(virDomainXMLOptionPtr xmlopt,
@@ -7799,6 +7781,13 @@ virDomainParseMemoryLimit(const char *xpath,
 }
 
 
+bool
+virDomainDefHasMemoryHotplug(const virDomainDef *def)
+{
+    return def->mem.memory_slots > 0 || def->mem.max_memory > 0;
+}
+
+
 /**
  * virDomainDefGetMemoryInitial:
  * @def: domain definition
@@ -7810,19 +7799,24 @@ virDomainParseMemoryLimit(const char *xpath,
 unsigned long long
 virDomainDefGetMemoryInitial(virDomainDefPtr def)
 {
-    unsigned long long ret;
-    size_t i;
+    return def->mem.initial_memory;
+}
 
-    /* return NUMA memory size total in case numa is enabled */
-    if ((ret = virDomainNumaGetMemorySize(def->numa)) > 0) {
-        return ret;
-    } else {
-        ret = def->mem.max_balloon;
-        for (i = 0; i < def->nmems; i++)
-            ret -= def->mems[i]->size;
-    }
 
-    return def->mem.max_balloon;
+/**
+ * virDomainDefSetMemoryTotal:
+ * @def: domain definition
+ * @size: size to set
+ *
+ * Sets the total memory size in @def. This function should be used only by
+ * hypervisors that don't support memory hotplug.
+ */
+void
+virDomainDefSetMemoryTotal(virDomainDefPtr def,
+                           unsigned long long size)
+{
+    def->mem.total_memory = size;
+    def->mem.initial_memory = size;
 }
 
 
@@ -7831,13 +7825,13 @@ virDomainDefGetMemoryInitial(virDomainDefPtr def)
  * @def: domain definition
  * @size: size to set
  *
- * Sets the initial memory size in @def.
+ * Sets the initial memory size (without memory modules) in @def.
  */
 void
 virDomainDefSetMemoryInitial(virDomainDefPtr def,
                              unsigned long long size)
 {
-    def->mem.max_balloon = size;
+    def->mem.initial_memory = size;
 }
 
 
@@ -7855,12 +7849,10 @@ virDomainDefGetMemoryActual(virDomainDefPtr def)
     unsigned long long ret;
     size_t i;
 
-    if ((ret = virDomainNumaGetMemorySize(def->numa)) > 0) {
-        for (i = 0; i < def->nmems; i++)
-            ret += def->mems[i]->size;
-    } else {
-        ret = def->mem.max_balloon;
-    }
+    ret = def->mem.initial_memory;
+
+    for (i = 0; i < def->nmems; i++)
+        ret += def->mems[i]->size;
 
     return ret;
 }
@@ -7994,7 +7986,7 @@ virDomainControllerDefParseXML(xmlNodePtr node,
     if (ioeventfd &&
         (def->ioeventfd = virTristateSwitchTypeFromString(ioeventfd)) < 0) {
         virReportError(VIR_ERR_XML_ERROR,
-                       _("Malformed 'ioeventfd' value %s'"), max_sectors);
+                       _("Malformed 'ioeventfd' value %s'"), ioeventfd);
         goto error;
     }
 
@@ -14717,7 +14709,7 @@ virDomainDefParseXML(xmlDocPtr xml,
     xmlNodePtr *nodes = NULL, node = NULL;
     char *tmp = NULL;
     size_t i, j;
-    int n;
+    int n, virtType;
     long id = -1;
     virDomainDefPtr def;
     bool uuid_generated = false;
@@ -14755,11 +14747,12 @@ virDomainDefParseXML(xmlDocPtr xml,
         goto error;
     }
 
-    if ((def->virtType = virDomainVirtTypeFromString(tmp)) < 0) {
+    if ((virtType = virDomainVirtTypeFromString(tmp)) < 0) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("invalid domain type %s"), tmp);
         goto error;
     }
+    def->virtType = virtType;
     VIR_FREE(tmp);
 
     def->os.bootloader = virXPathString("string(./bootloader)", ctxt);
@@ -14816,7 +14809,7 @@ virDomainDefParseXML(xmlDocPtr xml,
         virCapsDomainDataPtr capsdata = NULL;
 
         if (!(capsdata = virCapabilitiesDomainDataLookup(caps, def->os.type,
-                def->os.arch, use_virttype ? def->virtType : -1,
+                def->os.arch, use_virttype ? def->virtType : VIR_DOMAIN_VIRT_NONE,
                 NULL, NULL)))
             goto error;
 
@@ -14874,7 +14867,7 @@ virDomainDefParseXML(xmlDocPtr xml,
 
     /* Extract domain memory */
     if (virDomainParseMemory("./memory[1]", NULL, ctxt,
-                             &def->mem.max_balloon, false, true) < 0)
+                             &def->mem.total_memory, false, true) < 0)
         goto error;
 
     if (virDomainParseMemory("./currentMemory[1]", NULL, ctxt,
@@ -15040,22 +15033,8 @@ virDomainDefParseXML(xmlDocPtr xml,
     }
     VIR_FREE(nodes);
 
-    /* If no iothreadid's or not fully populated, let's finish the job
-     * here rather than in PostParseCallback
-     */
-    if (def->iothreads && def->iothreads != def->niothreadids) {
-        unsigned int iothread_id = 1;
-        while (def->niothreadids != def->iothreads) {
-            if (!virDomainIOThreadIDFind(def, iothread_id)) {
-                virDomainIOThreadIDDefPtr iothrid;
-
-                if (!(iothrid = virDomainIOThreadIDAdd(def, iothread_id)))
-                    goto error;
-                iothrid->autofill = true;
-            }
-            iothread_id++;
-        }
-    }
+    if (virDomainIOThreadIDDefArrayInit(def) < 0)
+        goto error;
 
     /* Extract cpu tunables. */
     if ((n = virXPathULong("string(./cputune/shares[1])", ctxt,
@@ -15266,7 +15245,7 @@ virDomainDefParseXML(xmlDocPtr xml,
         goto error;
     }
     if (n) {
-        if (n > def->iothreads) {
+        if (n > def->niothreadids) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("too many iothreadsched nodes in cputune"));
             goto error;
@@ -16525,7 +16504,7 @@ virDomainDefParseXML(xmlDocPtr xml,
         goto error;
 
     /* callback to fill driver specific domain aspects */
-    if (virDomainDefPostParse(def, caps, xmlopt) < 0)
+    if (virDomainDefPostParse(def, caps, flags, xmlopt) < 0)
         goto error;
 
     /* Auto-add any implied controllers which aren't present */
@@ -17247,6 +17226,14 @@ static bool
 virDomainSerialDefCheckABIStability(virDomainChrDefPtr src,
                                     virDomainChrDefPtr dst)
 {
+    if (src->targetType != dst->targetType) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target serial type %s does not match source %s"),
+                       virDomainChrSerialTargetTypeToString(dst->targetType),
+                       virDomainChrSerialTargetTypeToString(src->targetType));
+        return false;
+    }
+
     if (src->target.port != dst->target.port) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Target serial port %d does not match source %d"),
@@ -18995,8 +18982,7 @@ virDomainDiskDefFormat(virBufferPtr buf,
         def->ioeventfd || def->event_idx || def->copy_on_read ||
         def->discard || def->iothread) {
         virBufferAddLit(buf, "<driver");
-        if (def->src->driverName)
-            virBufferAsprintf(buf, " name='%s'", def->src->driverName);
+        virBufferEscapeString(buf, " name='%s'", def->src->driverName);
         if (def->src->format > 0)
             virBufferAsprintf(buf, " type='%s'",
                               virStorageFileFormatTypeToString(def->src->format));
@@ -21099,19 +21085,17 @@ virDomainGraphicsDefFormat(virBufferPtr buf,
     * <graphics>. This is done to improve backward compatibility.
     */
     for (i = 0; i < def->nListens; i++) {
-        virDomainGraphicsListenType listenType;
-
         if (flags & VIR_DOMAIN_DEF_FORMAT_MIGRATABLE &&
             def->listens[i].fromConfig)
             continue;
-        listenType = virDomainGraphicsListenGetType(def, i);
 
-        if (listenType == VIR_DOMAIN_GRAPHICS_LISTEN_TYPE_ADDRESS ||
-            (listenType == VIR_DOMAIN_GRAPHICS_LISTEN_TYPE_NETWORK &&
-             !(flags & VIR_DOMAIN_DEF_FORMAT_INACTIVE))) {
-            if ((listenAddr = virDomainGraphicsListenGetAddress(def, i)))
-                break;
-        }
+        if (def->listens[i].type == VIR_DOMAIN_GRAPHICS_LISTEN_TYPE_NETWORK &&
+            flags & (VIR_DOMAIN_DEF_FORMAT_INACTIVE |
+                     VIR_DOMAIN_DEF_FORMAT_MIGRATABLE))
+            continue;
+
+        if ((listenAddr = virDomainGraphicsListenGetAddress(def, i)))
+            break;
     }
 
     virBufferAsprintf(buf, "<graphics type='%s'", type);
@@ -21665,7 +21649,7 @@ virDomainDefFormatInternal(virDomainDefPtr def,
         xmlIndentTreeOutput = oldIndentTreeOutput;
     }
 
-    if (def->mem.max_memory) {
+    if (virDomainDefHasMemoryHotplug(def)) {
         virBufferAsprintf(buf,
                           "<maxMemory slots='%u' unit='KiB'>%llu</maxMemory>\n",
                           def->mem.memory_slots, def->mem.max_memory);
@@ -21778,7 +21762,7 @@ virDomainDefFormatInternal(virDomainDefPtr def,
         virBufferAsprintf(buf, " current='%u'", def->vcpus);
     virBufferAsprintf(buf, ">%u</vcpu>\n", def->maxvcpus);
 
-    if (def->iothreads > 0) {
+    if (def->niothreadids > 0) {
         virBufferAsprintf(buf, "<iothreads>%u</iothreads>\n",
                           def->iothreads);
         /* Only print out iothreadids if we read at least one */
@@ -22837,7 +22821,6 @@ virDomainObjListLoadStatus(virDomainObjListPtr doms,
                                       VIR_DOMAIN_DEF_PARSE_STATUS |
                                       VIR_DOMAIN_DEF_PARSE_ACTUAL_NET |
                                       VIR_DOMAIN_DEF_PARSE_PCI_ORIG_STATES |
-                                      VIR_DOMAIN_DEF_PARSE_CLOCK_ADJUST |
                                       VIR_DOMAIN_DEF_PARSE_SKIP_OSTYPE_CHECKS)))
         goto error;
 
@@ -24531,18 +24514,29 @@ virDomainDefNeedsPlacementAdvice(virDomainDefPtr def)
 
 
 int
-virDomainDefCheckDuplicateDiskWWN(virDomainDefPtr def)
+virDomainDefCheckDuplicateDiskInfo(virDomainDefPtr def)
 {
     size_t i;
     size_t j;
 
     for (i = 0; i < def->ndisks; i++) {
-        if (def->disks[i]->wwn) {
+        if (def->disks[i]->wwn || def->disks[i]->serial) {
             for (j = i + 1; j < def->ndisks; j++) {
-                if (STREQ_NULLABLE(def->disks[i]->wwn,
+                if (def->disks[i]->wwn &&
+                    STREQ_NULLABLE(def->disks[i]->wwn,
                                    def->disks[j]->wwn)) {
                     virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                                    _("Disks '%s' and '%s' have identical WWN"),
+                                   def->disks[i]->dst,
+                                   def->disks[j]->dst);
+                    return -1;
+                }
+
+                if (def->disks[i]->serial &&
+                    STREQ_NULLABLE(def->disks[i]->serial,
+                                   def->disks[j]->serial)) {
+                    virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                                   _("Disks '%s' and '%s' have identical serial"),
                                    def->disks[i]->dst,
                                    def->disks[j]->dst);
                     return -1;

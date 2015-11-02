@@ -423,6 +423,11 @@ testCompareXMLToArgvHelper(const void *data)
     if (virQEMUCapsGet(info->extraFlags, QEMU_CAPS_ENABLE_FIPS))
         flags |= FLAG_FIPS;
 
+    result = qemuTestCapsCacheInsert(driver.qemuCapsCache, info->name,
+                                     info->extraFlags);
+    if (result < 0)
+        goto cleanup;
+
     result = testCompareXMLToArgvFiles(xml, args, info->extraFlags,
                                        info->migrateFrom, info->migrateFd,
                                        flags);
@@ -483,8 +488,7 @@ mymain(void)
         return EXIT_FAILURE;
     }
 
-    driver.config = virQEMUDriverConfigNew(false);
-    if (driver.config == NULL)
+    if (qemuTestDriverInit(&driver) < 0)
         return EXIT_FAILURE;
 
     driver.privileged = true;
@@ -499,10 +503,6 @@ mymain(void)
     if (VIR_STRDUP_QUIET(driver.config->spiceTLSx509certdir, "/etc/pki/libvirt-spice") < 0)
         return EXIT_FAILURE;
 
-    if ((driver.caps = testQemuCapsInit()) == NULL)
-        return EXIT_FAILURE;
-    if (!(driver.xmlopt = virQEMUDriverCreateXMLConf(&driver)))
-        return EXIT_FAILURE;
     VIR_FREE(driver.config->stateDir);
     if (VIR_STRDUP_QUIET(driver.config->stateDir, "/nowhere") < 0)
         return EXIT_FAILURE;
@@ -553,16 +553,19 @@ mymain(void)
                  FLAG_EXPECT_PARSE_ERROR | FLAG_EXPECT_ERROR,           \
                  __VA_ARGS__)
 
+# define DO_TEST_LINUX(name, ...)                                       \
+    DO_TEST_LINUX_FULL(name, NULL, -1, 0, __VA_ARGS__)
+
 # ifdef __linux__
     /* This is a macro that invokes test only on Linux. It's
      * meant to be called in those cases where qemuxml2argvmock
      * cooperation is expected (e.g. we need a fixed time,
      * predictable NUMA topology and so on). On non-Linux
      * platforms the macro just consume its argument. */
-#  define DO_TEST_LINUX(name, ...)                                      \
-    DO_TEST_FULL(name, NULL, -1, 0, __VA_ARGS__)
+#  define DO_TEST_LINUX_FULL(name, ...)                                 \
+    DO_TEST_FULL(name, __VA_ARGS__)
 # else  /* __linux__ */
-#  define DO_TEST_LINUX(name, ...)                                      \
+#  define DO_TEST_LINUX_FULL(name, ...)                                 \
     do {                                                                \
         const char *tmp ATTRIBUTE_UNUSED = name;                        \
     } while (0)
@@ -1271,6 +1274,10 @@ mymain(void)
     DO_TEST_FULL("migrate", "tcp:10.0.0.1:5000", -1, 0,
             QEMU_CAPS_MIGRATE_QEMU_TCP);
 
+    DO_TEST_LINUX_FULL("migrate-numa-unaligned", "stdio", 7, 0,
+                       QEMU_CAPS_MIGRATE_KVM_STDIO, QEMU_CAPS_NUMA,
+                       QEMU_CAPS_OBJECT_MEMORY_RAM);
+
     DO_TEST("qemu-ns", NONE);
 
     DO_TEST("smp", QEMU_CAPS_SMP_TOPOLOGY);
@@ -1278,6 +1285,7 @@ mymain(void)
     DO_TEST("iothreads", QEMU_CAPS_OBJECT_IOTHREAD);
     DO_TEST("iothreads-ids", QEMU_CAPS_OBJECT_IOTHREAD);
     DO_TEST("iothreads-ids-partial", QEMU_CAPS_OBJECT_IOTHREAD);
+    DO_TEST_FAILURE("iothreads-nocap", NONE);
     DO_TEST("iothreads-disk", QEMU_CAPS_OBJECT_IOTHREAD, QEMU_CAPS_DEVICE,
             QEMU_CAPS_DRIVE);
     DO_TEST("iothreads-disk-virtio-ccw", QEMU_CAPS_OBJECT_IOTHREAD, QEMU_CAPS_DEVICE,
@@ -1331,6 +1339,7 @@ mymain(void)
     DO_TEST_PARSE_ERROR("cputune-vcpusched-overlap", QEMU_CAPS_NAME);
     DO_TEST("cputune-numatune", QEMU_CAPS_SMP_TOPOLOGY,
             QEMU_CAPS_KVM,
+            QEMU_CAPS_OBJECT_IOTHREAD,
             QEMU_CAPS_OBJECT_MEMORY_RAM,
             QEMU_CAPS_OBJECT_MEMORY_FILE);
 
@@ -1625,6 +1634,18 @@ mymain(void)
             QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG, QEMU_CAPS_DTB,
             QEMU_CAPS_DRIVE, QEMU_CAPS_DEVICE_VIRTIO_MMIO,
             QEMU_CAPS_DEVICE_VIRTIO_RNG, QEMU_CAPS_OBJECT_RNG_RANDOM);
+    DO_TEST("aarch64-mmio-default-pci",
+            QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG, QEMU_CAPS_DTB,
+            QEMU_CAPS_DRIVE, QEMU_CAPS_DEVICE_VIRTIO_MMIO,
+            QEMU_CAPS_DEVICE_VIRTIO_RNG, QEMU_CAPS_OBJECT_RNG_RANDOM,
+            QEMU_CAPS_OBJECT_GPEX, QEMU_CAPS_DEVICE_PCI_BRIDGE,
+            QEMU_CAPS_DEVICE_DMI_TO_PCI_BRIDGE);
+    DO_TEST("aarch64-virtio-pci",
+            QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG, QEMU_CAPS_DTB,
+            QEMU_CAPS_DRIVE, QEMU_CAPS_DEVICE_VIRTIO_MMIO,
+            QEMU_CAPS_DEVICE_VIRTIO_RNG, QEMU_CAPS_OBJECT_RNG_RANDOM,
+            QEMU_CAPS_OBJECT_GPEX, QEMU_CAPS_DEVICE_PCI_BRIDGE,
+            QEMU_CAPS_DEVICE_DMI_TO_PCI_BRIDGE, QEMU_CAPS_VIRTIO_SCSI);
     DO_TEST("aarch64-aavmf-virtio-mmio",
             QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG, QEMU_CAPS_DTB,
             QEMU_CAPS_DRIVE, QEMU_CAPS_DEVICE_VIRTIO_MMIO,
@@ -1637,6 +1658,11 @@ mymain(void)
             QEMU_CAPS_CPU_HOST, QEMU_CAPS_KVM);
     DO_TEST("aarch64-gic", QEMU_CAPS_DEVICE, QEMU_CAPS_DRIVE,
             QEMU_CAPS_KVM);
+    DO_TEST("aarch64-gicv3", QEMU_CAPS_DEVICE, QEMU_CAPS_DRIVE,
+            QEMU_CAPS_KVM, QEMU_CAPS_MACHINE_OPT,
+            QEMU_CAPS_MACH_VIRT_GIC_VERSION);
+    DO_TEST_FAILURE("aarch64-gicv3", QEMU_CAPS_DEVICE, QEMU_CAPS_DRIVE,
+            QEMU_CAPS_KVM, QEMU_CAPS_MACHINE_OPT);
 
     driver.caps->host.cpu->arch = VIR_ARCH_AARCH64;
     DO_TEST("aarch64-kvm-32-on-64", QEMU_CAPS_DEVICE, QEMU_CAPS_DRIVE,
@@ -1761,9 +1787,7 @@ mymain(void)
             QEMU_CAPS_MACHINE_OPT, QEMU_CAPS_DRIVE, QEMU_CAPS_VIRTIO_SCSI,
             QEMU_CAPS_DEVICE, QEMU_CAPS_VIRTIO_CCW, QEMU_CAPS_VIRTIO_S390);
 
-    virObjectUnref(driver.config);
-    virObjectUnref(driver.caps);
-    virObjectUnref(driver.xmlopt);
+    qemuTestDriverFree(&driver);
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -706,8 +706,7 @@ qemuSetupCpuCgroup(virQEMUDriverPtr driver,
             event = virDomainEventTunableNewFromObj(vm, eventParams, eventNparams);
         }
 
-        if (event)
-            qemuDomainEventQueue(driver, event);
+        qemuDomainEventQueue(driver, event);
     }
 
     return 0;
@@ -1163,6 +1162,9 @@ qemuSetupCgroupForIOThreads(virDomainObjPtr vm)
     long long quota = vm->def->cputune.quota;
     char *mem_mask = NULL;
     virDomainNumatuneMemMode mem_mode;
+
+    if (def->niothreadids == 0)
+        return 0;
 
     if ((period || quota) &&
         !virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPU)) {

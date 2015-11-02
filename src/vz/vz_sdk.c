@@ -328,12 +328,8 @@ prlsdkUUIDParse(const char *uuidstr, unsigned char *uuid)
     tmp[strlen(tmp) - 1] = '\0';
 
     /* trim curly braces */
-    if (virUUIDParse(tmp + 1, uuid) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
-                       _("UUID in config file malformed"));
-        ret = -1;
+    if (virUUIDParse(tmp + 1, uuid) < 0)
         goto error;
-    }
 
     ret = 0;
  error:
@@ -365,8 +361,11 @@ prlsdkGetDomainIds(PRL_HANDLE sdkdom,
     PrlVmCfg_GetUuid(sdkdom, uuidstr, &len);
     prlsdkCheckRetGoto(pret, error);
 
-    if (prlsdkUUIDParse(uuidstr, uuid) < 0)
+    if (prlsdkUUIDParse(uuidstr, uuid) < 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Domain UUID is malformed or empty"));
         goto error;
+    }
 
     return 0;
 
@@ -1300,7 +1299,7 @@ prlsdkLoadDomain(vzConnPtr privconn,
     /* get RAM parameters */
     pret = PrlVmCfg_GetRamSize(sdkdom, &ram);
     prlsdkCheckRetGoto(pret, error);
-    virDomainDefSetMemoryInitial(def, ram << 10); /* RAM size obtained in Mbytes,
+    virDomainDefSetMemoryTotal(def, ram << 10); /* RAM size obtained in Mbytes,
                                                      convert to Kbytes */
     def->mem.cur_balloon = ram << 10;
 
@@ -1724,8 +1723,10 @@ prlsdkEventsHandler(PRL_HANDLE prlEvent, PRL_VOID_PTR opaque)
     pret = PrlEvent_GetType(prlEvent, &prlEventType);
     prlsdkCheckRetGoto(pret, cleanup);
 
-    if (prlsdkUUIDParse(uuidstr, uuid) < 0)
+    if (prlsdkUUIDParse(uuidstr, uuid) < 0) {
+        VIR_DEBUG("Skipping event type %d", prlEventType);
         goto cleanup;
+    }
 
     switch (prlEventType) {
     case PET_DSP_EVT_VM_STATE_CHANGED:
@@ -2025,7 +2026,7 @@ prlsdkCheckUnsupportedParams(PRL_HANDLE sdkdom, virDomainDefPtr def)
         }
     } else {
         if (def->os.nBootDevs != 0 ||
-            !STREQ_NULLABLE(def->os.init, "/sbin/init") ||
+            STRNEQ_NULLABLE(def->os.init, "/sbin/init") ||
             (def->os.initargv != NULL && def->os.initargv[0] != NULL)) {
 
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -3292,7 +3293,7 @@ static int prlsdkAddDisk(PRL_HANDLE sdkdom,
         goto cleanup;
     }
 
-    if (bootDisk == true) {
+    if (bootDisk) {
         pret = PrlVmDev_GetIndex(sdkdisk, &devIndex);
         prlsdkCheckRetGoto(pret, cleanup);
 
@@ -3550,7 +3551,7 @@ prlsdkDoApplyConfig(virConnectPtr conn,
     for (i = 0; i < def->ndisks; i++) {
         bool bootDisk = false;
 
-        if (needBoot == true &&
+        if (needBoot &&
             def->disks[i]->device == VIR_DOMAIN_DISK_DEVICE_DISK) {
 
             needBoot = false;

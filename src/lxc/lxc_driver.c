@@ -734,7 +734,7 @@ static int lxcDomainSetMemoryFlags(virDomainPtr dom, unsigned long newmem,
         }
 
         if (flags & VIR_DOMAIN_AFFECT_CONFIG) {
-            virDomainDefSetMemoryInitial(persistentDef, newmem);
+            virDomainDefSetMemoryTotal(persistentDef, newmem);
             if (persistentDef->mem.cur_balloon > newmem)
                 persistentDef->mem.cur_balloon = newmem;
             if (virDomainSaveConfig(cfg->configDir, persistentDef) < 0)
@@ -1229,6 +1229,7 @@ lxcDomainCreateXMLWithFiles(virConnectPtr conn,
 
     if (!(vm = virDomainObjListAdd(driver->domains, def,
                                    driver->xmlopt,
+                                   VIR_DOMAIN_OBJ_LIST_ADD_LIVE |
                                    VIR_DOMAIN_OBJ_LIST_ADD_CHECK_LIVE,
                                    NULL)))
         goto cleanup;
@@ -1239,8 +1240,10 @@ lxcDomainCreateXMLWithFiles(virConnectPtr conn,
                            (flags & VIR_DOMAIN_START_AUTODESTROY),
                            VIR_DOMAIN_RUNNING_BOOTED) < 0) {
         virDomainAuditStart(vm, "booted", false);
-        virDomainObjListRemove(driver->domains, vm);
-        vm = NULL;
+        if (!vm->persistent) {
+            virDomainObjListRemove(driver->domains, vm);
+            vm = NULL;
+        }
         goto cleanup;
     }
 
@@ -1553,12 +1556,17 @@ static int lxcCheckNetNsSupport(void)
 static virSecurityManagerPtr
 lxcSecurityInit(virLXCDriverConfigPtr cfg)
 {
+    unsigned int flags = VIR_SECURITY_MANAGER_PRIVILEGED;
+
     VIR_INFO("lxcSecurityInit %s", cfg->securityDriverName);
+
+    if (cfg->securityDefaultConfined)
+        flags |= VIR_SECURITY_MANAGER_DEFAULT_CONFINED;
+    if (cfg->securityRequireConfined)
+        flags |= VIR_SECURITY_MANAGER_REQUIRE_CONFINED;
+
     virSecurityManagerPtr mgr = virSecurityManagerNew(cfg->securityDriverName,
-                                                      LXC_DRIVER_NAME,
-                                                      false,
-                                                      cfg->securityDefaultConfined,
-                                                      cfg->securityRequireConfined);
+                                                      LXC_DRIVER_NAME, flags);
     if (!mgr)
         goto error;
 

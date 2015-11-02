@@ -180,8 +180,7 @@ testCompareStatusXMLToXMLFiles(const void *opaque)
                                       driver.caps, driver.xmlopt,
                                       VIR_DOMAIN_DEF_PARSE_STATUS |
                                       VIR_DOMAIN_DEF_PARSE_ACTUAL_NET |
-                                      VIR_DOMAIN_DEF_PARSE_PCI_ORIG_STATES |
-                                      VIR_DOMAIN_DEF_PARSE_CLOCK_ADJUST))) {
+                                      VIR_DOMAIN_DEF_PARSE_PCI_ORIG_STATES))) {
         fprintf(stderr, "Failed to parse domain status XML:\n%s", source);
         goto cleanup;
     }
@@ -302,11 +301,11 @@ mymain(void)
     int ret = 0;
     struct testInfo info;
 
-    if ((driver.caps = testQemuCapsInit()) == NULL)
+    if (qemuTestDriverInit(&driver) < 0)
         return EXIT_FAILURE;
 
-    if (!(driver.xmlopt = virQEMUDriverCreateXMLConf(&driver)))
-        return EXIT_FAILURE;
+    /* TODO: test with format probing disabled too */
+    driver.config->allowDiskFormatProbing = true;
 
 # define DO_TEST_FULL(name, is_different, when)                                \
     do {                                                                       \
@@ -626,13 +625,15 @@ mymain(void)
     DO_TEST("smbios-multiple-type2");
     DO_TEST("aarch64-aavmf-virtio-mmio");
 
+    DO_TEST("aarch64-gic");
+    DO_TEST("aarch64-gicv3");
+
     DO_TEST("memory-hotplug");
     DO_TEST("memory-hotplug-nonuma");
     DO_TEST("memory-hotplug-dimm");
     DO_TEST("net-udp");
 
-    virObjectUnref(driver.caps);
-    virObjectUnref(driver.xmlopt);
+    qemuTestDriverFree(&driver);
 
     return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

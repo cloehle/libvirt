@@ -455,19 +455,19 @@ static int str2PCIAddress(const char *str, struct PCIAddress *pciAddr)
 
     domain = (char *)str;
 
-    if (virStrToLong_ui(domain, &bus, 0, &pciAddr->domain) != 0)
+    if (virStrToLong_ui(domain, &bus, 16, &pciAddr->domain) != 0)
         return -1;
 
     bus++;
-    if (virStrToLong_ui(bus, &slot, 0, &pciAddr->bus) != 0)
+    if (virStrToLong_ui(bus, &slot, 16, &pciAddr->bus) != 0)
         return -1;
 
     slot++;
-    if (virStrToLong_ui(slot, &function, 0, &pciAddr->slot) != 0)
+    if (virStrToLong_ui(slot, &function, 16, &pciAddr->slot) != 0)
         return -1;
 
     function++;
-    if (virStrToLong_ui(function, NULL, 0, &pciAddr->function) != 0)
+    if (virStrToLong_ui(function, NULL, 16, &pciAddr->function) != 0)
         return -1;
 
     return 0;
@@ -484,15 +484,15 @@ static int str2SCSIAddress(const char *str, struct SCSIAddress *scsiAddr)
 
     controller = (char *)str;
 
-    if (virStrToLong_uip(controller, &bus, 0, &scsiAddr->controller) != 0)
+    if (virStrToLong_uip(controller, &bus, 10, &scsiAddr->controller) != 0)
         return -1;
 
     bus++;
-    if (virStrToLong_uip(bus, &unit, 0, &scsiAddr->bus) != 0)
+    if (virStrToLong_uip(bus, &unit, 10, &scsiAddr->bus) != 0)
         return -1;
 
     unit++;
-    if (virStrToLong_ullp(unit, NULL, 0, &scsiAddr->unit) != 0)
+    if (virStrToLong_ullp(unit, NULL, 10, &scsiAddr->unit) != 0)
         return -1;
 
     return 0;
@@ -509,15 +509,15 @@ static int str2IDEAddress(const char *str, struct IDEAddress *ideAddr)
 
     controller = (char *)str;
 
-    if (virStrToLong_ui(controller, &bus, 0, &ideAddr->controller) != 0)
+    if (virStrToLong_ui(controller, &bus, 10, &ideAddr->controller) != 0)
         return -1;
 
     bus++;
-    if (virStrToLong_ui(bus, &unit, 0, &ideAddr->bus) != 0)
+    if (virStrToLong_ui(bus, &unit, 10, &ideAddr->bus) != 0)
         return -1;
 
     unit++;
-    if (virStrToLong_ui(unit, NULL, 0, &ideAddr->unit) != 0)
+    if (virStrToLong_ui(unit, NULL, 10, &ideAddr->unit) != 0)
         return -1;
 
     return 0;
@@ -534,15 +534,15 @@ static int str2CCWAddress(const char *str, struct CCWAddress *ccwAddr)
 
     cssid = (char *)str;
 
-    if (virStrToLong_ui(cssid, &ssid, 0, &ccwAddr->cssid) != 0)
+    if (virStrToLong_ui(cssid, &ssid, 16, &ccwAddr->cssid) != 0)
         return -1;
 
     ssid++;
-    if (virStrToLong_ui(ssid, &devno, 0, &ccwAddr->ssid) != 0)
+    if (virStrToLong_ui(ssid, &devno, 16, &ccwAddr->ssid) != 0)
         return -1;
 
     devno++;
-    if (virStrToLong_ui(devno, NULL, 0, &ccwAddr->devno) != 0)
+    if (virStrToLong_ui(devno, NULL, 16, &ccwAddr->devno) != 0)
         return -1;
 
     return 0;
@@ -739,8 +739,8 @@ cmdAttachDisk(vshControl *ctl, const vshCmd *cmd)
         } else if (STRPREFIX((const char *)target, "hd")) {
             if (diskAddr.type == DISK_ADDR_TYPE_IDE) {
                 virBufferAsprintf(&buf,
-                                  "<address type='drive' controller='%d'"
-                                  " bus='%d' unit='%d' />\n",
+                                  "<address type='drive' controller='%u'"
+                                  " bus='%u' unit='%u' />\n",
                                   diskAddr.addr.ide.controller, diskAddr.addr.ide.bus,
                                   diskAddr.addr.ide.unit);
             } else {
@@ -862,6 +862,10 @@ static const vshCmdOptDef opts_attach_interface[] = {
      .type = VSH_OT_BOOL,
      .help = N_("affect current domain")
     },
+    {.name = "print-xml",
+     .type = VSH_OT_BOOL,
+     .help = N_("print XML document rather than attach the interface")
+    },
     {.name = NULL}
 };
 
@@ -921,7 +925,7 @@ cmdAttachInterface(vshControl *ctl, const vshCmd *cmd)
     int ret;
     bool functionReturn = false;
     virBuffer buf = VIR_BUFFER_INITIALIZER;
-    char *xml;
+    char *xml = NULL;
     unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT;
     bool current = vshCommandOptBool(cmd, "current");
     bool config = vshCommandOptBool(cmd, "config");
@@ -936,13 +940,6 @@ cmdAttachInterface(vshControl *ctl, const vshCmd *cmd)
     if (config || persistent)
         flags |= VIR_DOMAIN_AFFECT_CONFIG;
     if (live)
-        flags |= VIR_DOMAIN_AFFECT_LIVE;
-
-    if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
-        return false;
-
-    if (persistent &&
-        virDomainIsActive(dom) == 1)
         flags |= VIR_DOMAIN_AFFECT_LIVE;
 
     if (vshCommandOptStringReq(ctl, cmd, "type", &type) < 0 ||
@@ -1051,6 +1048,7 @@ cmdAttachInterface(vshControl *ctl, const vshCmd *cmd)
         virBufferAddLit(&buf, "</bandwidth>\n");
     }
 
+    virBufferAdjustIndent(&buf, -2);
     virBufferAddLit(&buf, "</interface>\n");
 
     if (virBufferError(&buf)) {
@@ -1060,12 +1058,23 @@ cmdAttachInterface(vshControl *ctl, const vshCmd *cmd)
 
     xml = virBufferContentAndReset(&buf);
 
+    if (vshCommandOptBool(cmd, "print-xml")) {
+        vshPrint(ctl, "%s", xml);
+        functionReturn = true;
+        goto cleanup;
+    }
+
+    if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
+        goto cleanup;
+
+    if (persistent &&
+        virDomainIsActive(dom) == 1)
+        flags |= VIR_DOMAIN_AFFECT_LIVE;
+
     if (flags || current)
         ret = virDomainAttachDeviceFlags(dom, xml, flags);
     else
         ret = virDomainAttachDevice(dom, xml);
-
-    VIR_FREE(xml);
 
     if (ret != 0) {
         vshError(ctl, "%s", _("Failed to attach interface"));
@@ -1075,7 +1084,9 @@ cmdAttachInterface(vshControl *ctl, const vshCmd *cmd)
     }
 
  cleanup:
-    virDomainFree(dom);
+    VIR_FREE(xml);
+    if (dom)
+        virDomainFree(dom);
     virBufferFreeAndReset(&buf);
     return functionReturn;
 }
@@ -1688,10 +1699,6 @@ virshPrintJobProgress(const char *label, unsigned long long remaining,
                       unsigned long long total)
 {
     int progress;
-
-    if (total == 0)
-        /* migration has not been started */
-        return;
 
     if (remaining == 0) {
         /* migration has completed */
@@ -4390,7 +4397,7 @@ virshWatchJob(vshControl *ctl,
             ret = virDomainGetJobInfo(dom, &jobinfo);
             pthread_sigmask(SIG_SETMASK, &oldsigmask, NULL);
             if (ret == 0) {
-                if (verbose)
+                if (verbose && jobinfo.dataTotal > 0)
                     virshPrintJobProgress(label, jobinfo.dataRemaining,
                                           jobinfo.dataTotal);
 
@@ -5273,7 +5280,7 @@ doDump(void *opaque)
             goto out;
         }
 
-        if (vshCommandOptString(ctl, cmd, "format", &format)) {
+        if (vshCommandOptString(ctl, cmd, "format", &format) > 0) {
             if (STREQ(format, "kdump-zlib")) {
                 dumpformat = VIR_DOMAIN_CORE_DUMP_FORMAT_KDUMP_ZLIB;
             } else if (STREQ(format, "kdump-lzo")) {
@@ -6866,7 +6873,7 @@ static bool
 cmdSetvcpus(vshControl *ctl, const vshCmd *cmd)
 {
     virDomainPtr dom;
-    int count = 0;
+    unsigned int count = 0;
     bool ret = false;
     bool maximum = vshCommandOptBool(cmd, "maximum");
     bool config = vshCommandOptBool(cmd, "config");
@@ -6893,8 +6900,13 @@ cmdSetvcpus(vshControl *ctl, const vshCmd *cmd)
     if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
         return false;
 
-    if (vshCommandOptInt(ctl, cmd, "count", &count) < 0 || count <= 0)
+    if (vshCommandOptUInt(ctl, cmd, "count", &count) < 0)
         goto cleanup;
+
+    if (count == 0) {
+        vshError(ctl, _("Can't set 0 processors for a VM"));
+        goto cleanup;
+    }
 
     /* none of the options were specified */
     if (!current && flags == 0) {
@@ -11527,6 +11539,7 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
     xmlNodePtr source = NULL;
     char *device_type = NULL;
     char *ret = NULL;
+    char *startupPolicy = NULL;
 
     if (!disk_node)
         return NULL;
@@ -11560,13 +11573,15 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
         goto cleanup;
     }
 
-    if (type == VIRSH_UPDATE_DISK_XML_INSERT && source) {
-        vshError(NULL, _("The disk device '%s' already has media"), target);
-        goto cleanup;
-    }
-
-    /* remove current source */
     if (source) {
+        if (type == VIRSH_UPDATE_DISK_XML_INSERT) {
+            vshError(NULL, _("The disk device '%s' already has media"), target);
+            goto cleanup;
+        }
+
+        startupPolicy = virXMLPropString(source, "startupPolicy");
+
+        /* remove current source */
         xmlUnlinkNode(source);
         xmlFreeNode(source);
         source = NULL;
@@ -11590,6 +11605,8 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
         else
             xmlNewProp(source, BAD_CAST "file", BAD_CAST new_source);
 
+        if (startupPolicy)
+            xmlNewProp(source, BAD_CAST "startupPolicy", BAD_CAST startupPolicy);
         xmlAddChild(disk_node, source);
     }
 
@@ -11600,6 +11617,7 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
 
  cleanup:
     VIR_FREE(device_type);
+    VIR_FREE(startupPolicy);
     return ret;
 }
 
