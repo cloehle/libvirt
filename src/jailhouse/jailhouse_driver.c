@@ -51,6 +51,7 @@
 #define STATESHUTDOWNSTRING         "shut down       "
 #define STATEFAILED 3
 #define STATEFAILEDSTRING           "failed          "
+#define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
 
 static struct jailhouse_cell *lastQueryCells;
 static int lastQueryCount;
@@ -271,14 +272,36 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
             return VIR_DRV_OPEN_DECLINED;
-    if (!virFileIsExecutable(conn->uri->path)){
+    char* binary;
+    if(conn->uri->path == NULL) binary = strdup("jailhouse");
+    else {
+        if (!virFileIsExecutable(conn->uri->path)){
+            virReportError(VIR_ERR_INTERNAL_ERROR,
+                           _("Path '%s', is not a valid executable file."),
+                           conn->uri->path);
+            return VIR_DRV_OPEN_ERROR;
+        }
+        binary = strdup(conn->uri->path);
+    }
+    virCommandPtr cmd = virCommandNew(binary);
+    virCommandAddArg(cmd, "--version");
+    virCommandAddEnvPassCommon(cmd);
+    char *output;
+    virCommandSetOutputBuffer(cmd, &output);
+    if(virCommandRun(cmd, NULL) < 0){
         virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Path '%s', is not a valid executable file."),
+                       _("Executing '%s --version' failed."),
+                       conn->uri->path);
+        return VIR_DRV_OPEN_ERROR;
+    }
+    if(strncmp(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))){
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("%s doesn't seem to be a correct Jailhouse binary."),
                        conn->uri->path);
         return VIR_DRV_OPEN_ERROR;
     }
     struct jailhouse_driver *driver = malloc(sizeof(struct jailhouse_driver));
-    driver->binary = strdup(conn->uri->path);
+    driver->binary = binary;
     conn->privateData = driver;
     return VIR_DRV_OPEN_SUCCESS;
 }
