@@ -1,5 +1,5 @@
 /*
- * jailhouse_driver.c: hypervisor driver for managing Jailhouse cells
+ * jailhouse_driver.c: hypervisor driver for managing Jailhouse inmates
  *
  * Copyright (C) 2015 Linutronix GmbH
  *
