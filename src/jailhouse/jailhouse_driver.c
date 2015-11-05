@@ -214,7 +214,7 @@ cellToVirDomainPtr(virConnectPtr conn, struct jailhouse_cell *cell)
 }
 
 /*
- *  Check lastQueryCells for cell and copies uuid if found, otherwise generates a new one, this is to preserve UUID in libvirt
+ *  Check cells for cell and copies UUID if found, otherwise generates a new one, this is to preserve UUID in libvirt
  */
 static void setUUID(struct jailhouse_cell *cells, int count, struct jailhouse_cell* cell){
     int i;
