@@ -347,7 +347,6 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
     for(i = 0; i < maxids && i < cellsCount; i++)
         ids[i] = cells[i].id;
     return i;
-
 }
 
 static int
@@ -397,12 +396,10 @@ jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
     int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < cellsCount; i++){
+    for(i = 0; i < cellsCount; i++)
         if(memcmp(cells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
             return cellToVirDomainPtr(conn, cells+i);
-    }
     return NULL;
-
 }
 
 /*
@@ -413,9 +410,8 @@ static int
 jailhouseDomainGetInfo(virDomainPtr domain, virDomainInfoPtr info)
 {
     struct jailhouse_cell *cell = virDomainPtrToCell(domain);
-    if(cell == NULL){
+    if(cell == NULL)
         return -1;
-    }
     info->state = cellToVirDomainState(cell);
     info->maxMem = 1;
     info->memory = 1;
@@ -429,9 +425,8 @@ jailhouseDomainGetState(virDomainPtr domain, int *state,
                         int *reason ATTRIBUTE_UNUSED, unsigned int flags ATTRIBUTE_UNUSED)
 {
     struct jailhouse_cell *cell = virDomainPtrToCell(domain);
-    if(cell == NULL){
+    if(cell == NULL)
         return -1;
-    }
     *state = cellToVirDomainState(cell);
     return 0;
 }
@@ -447,9 +442,7 @@ jailhouseDomainShutdown(virDomainPtr domain)
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
     if(virCommandRun(cmd, NULL) < 0)
-    {
         return -1;
-    }
     return 0;
 }
 
@@ -468,9 +461,7 @@ jailhouseDomainDestroy(virDomainPtr domain)
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
     if(virCommandRun(cmd, NULL) < 0)
-    {
         return -1;
-    }
     return 0;
 }
 
@@ -488,9 +479,7 @@ jailhouseDomainCreate(virDomainPtr domain)
     virCommandSetOutputBuffer(cmd, &output);
     virCommandSetErrorBuffer(cmd, &errors);
     if(virCommandRun(cmd, NULL) < 0)
-    {
         return -1;
-    }
     return 0;
 }
 
@@ -513,8 +502,6 @@ static char *
 jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
 {
     return strdup("<capabilities></capabilities>");
-
-
 }
 
 /*
