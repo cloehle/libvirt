@@ -483,6 +483,9 @@ jailhouseDomainCreate(virDomainPtr domain)
     return 0;
 }
 
+/*
+ * There currently is no reason why it shouldn't be
+ */
 static int
 jailhouseConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
 {
@@ -505,7 +508,7 @@ jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
 }
 
 /*
- *  Returns a dummy XML to shut up virt-manager.
+ *  Returns a dummy XML for virt-manager
  */
 static char *
 jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags ATTRIBUTE_UNUSED)
