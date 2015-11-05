@@ -494,64 +494,6 @@ jailhouseDomainCreate(virDomainPtr domain)
     return 0;
 }
 
-/*
- *  Calls cell create, cell load and cell start, the parameters are supplied through the xml
- *  XML format:
- *  <cell name="demo">
- *      <config>demo.cell</config>
- *      <bin>demo.bin</bin>
- *      <offset>0x00000</offset>
- *  </cell>
- *
- */
-static virDomainPtr
-jailhouseDomainCreateXML(virConnectPtr conn, const char * xmlDesc, unsigned int flags)
-{
-    if(flags) {}
-    virDomainPtr dom = NULL;
-    char *binary = ((struct jailhouse_driver *)conn->privateData)->binary;
-    xmlXPathContextPtr ctxt;
-    virCommandPtr cmd;
-    virXMLParseStringCtxt(xmlDesc, NULL, &ctxt);
-    char *name = virXPathString("string(/cell/@name)", ctxt);
-    char *config = virXPathString("string(/cell/config)", ctxt);
-    char *bin = virXPathString("string(/cell/bin)", ctxt);
-    char *offset = virXPathString("string(/cell/offset/text())", ctxt);
-    if(name == NULL || config == NULL|| bin == NULL || offset == NULL) goto cleanup;
-    cmd = virCommandNew(binary);
-    virCommandAddArg(cmd, "cell");
-    virCommandAddArg(cmd, "create");
-    virCommandAddArg(cmd, config);
-    virCommandAddEnvPassCommon(cmd);
-    if(virCommandRun(cmd, NULL) < 0)
-        goto cleanup;
-    cmd = virCommandNew(binary);
-    virCommandAddArg(cmd, "cell");
-    virCommandAddArg(cmd, "load");
-    virCommandAddArg(cmd, name);
-    virCommandAddArg(cmd, bin);
-    virCommandAddArg(cmd, "-a");
-    virCommandAddArg(cmd, offset);
-    virCommandAddEnvPassCommon(cmd);
-    if(virCommandRun(cmd, NULL) < 0)
-        goto cleanup;
-    cmd = virCommandNew(binary);
-    virCommandAddArg(cmd, "cell");
-    virCommandAddArg(cmd, "start");
-    virCommandAddArg(cmd, name);
-    virCommandAddEnvPassCommon(cmd);
-    if(virCommandRun(cmd, NULL) < 0)
-        goto cleanup;
-    dom = jailhouseDomainLookupByName(conn, name);
-
-    cleanup:
-    if(name != NULL) free(name);
-    if(config != NULL) free(config);
-    if(bin != NULL) free(bin);
-    if(offset != NULL) free(offset);
-    return dom;
-}
-
 static int
 jailhouseConnectIsAlive(virConnectPtr conn ATTRIBUTE_UNUSED)
 {
@@ -609,7 +551,6 @@ static virHypervisorDriver jailhouseHypervisorDriver = {
     .domainShutdown = jailhouseDomainShutdown, /* 0.1.0 */
     .domainDestroy = jailhouseDomainDestroy, /* 0.1.0 */
     .domainCreate = jailhouseDomainCreate,    /* 0.1.0 */
-    .domainCreateXML = jailhouseDomainCreateXML, /* 0.1.0 */
     .nodeGetInfo = jailhouseNodeGetInfo /* 0.1.0 */
 };
 
