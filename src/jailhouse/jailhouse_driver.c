@@ -525,23 +525,23 @@ jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags ATTRIBUTE_UNUS
 
 static virHypervisorDriver jailhouseHypervisorDriver = {
     .name = "jailhouse",
-    .connectOpen = jailhouseConnectOpen, /* 0.1.0 */
-    .connectClose = jailhouseConnectClose, /* 0.1.0 */
-    .connectGetCapabilities = jailhouseConnectGetCapabilities, /* 0.1.0 */
-    .connectNumOfDomains = jailhouseConnectNumOfDomains, /* 0.1.0 */
-    .connectListDomains = jailhouseConnectListDomains, /* 0.1.0 */
-    .connectIsAlive = jailhouseConnectIsAlive, /* 0.1.0 */
-    .connectListAllDomains = jailhouseConnectListAllDomains, /* 0.1.0 */
-    .domainLookupByID = jailhouseDomainLookupByID, /* 0.1.0 */
-    .domainLookupByName = jailhouseDomainLookupByName, /* 0.1.0 */
-    .domainLookupByUUID = jailhouseDomainLookupByUUID, /* 0.1.0 */
-    .domainGetInfo = jailhouseDomainGetInfo,  /* 0.1.0 */
-    .domainGetState = jailhouseDomainGetState, /* 0.1.0 */
-    .domainGetXMLDesc = jailhouseDomainGetXMLDesc, /* 0.1.0 */
-    .domainShutdown = jailhouseDomainShutdown, /* 0.1.0 */
-    .domainDestroy = jailhouseDomainDestroy, /* 0.1.0 */
-    .domainCreate = jailhouseDomainCreate,    /* 0.1.0 */
-    .nodeGetInfo = jailhouseNodeGetInfo /* 0.1.0 */
+    .connectOpen = jailhouseConnectOpen, /* 1.2.22 */
+    .connectClose = jailhouseConnectClose, /* 1.2.22 */
+    .connectGetCapabilities = jailhouseConnectGetCapabilities, /* 1.2.22 */
+    .connectNumOfDomains = jailhouseConnectNumOfDomains, /* 1.2.22 */
+    .connectListDomains = jailhouseConnectListDomains, /* 1.2.22 */
+    .connectIsAlive = jailhouseConnectIsAlive, /* 1.2.22 */
+    .connectListAllDomains = jailhouseConnectListAllDomains, /* 1.2.22 */
+    .domainLookupByID = jailhouseDomainLookupByID, /* 1.2.22 */
+    .domainLookupByName = jailhouseDomainLookupByName, /* 1.2.22 */
+    .domainLookupByUUID = jailhouseDomainLookupByUUID, /* 1.2.22 */
+    .domainGetInfo = jailhouseDomainGetInfo,  /* 1.2.22 */
+    .domainGetState = jailhouseDomainGetState, /* 1.2.22 */
+    .domainGetXMLDesc = jailhouseDomainGetXMLDesc, /* 1.2.22 */
+    .domainShutdown = jailhouseDomainShutdown, /* 1.2.22 */
+    .domainDestroy = jailhouseDomainDestroy, /* 1.2.22 */
+    .domainCreate = jailhouseDomainCreate,    /* 1.2.22 */
+    .nodeGetInfo = jailhouseNodeGetInfo /* 1.2.22 */
 };
 
 static virConnectDriver jailhouseConnectDriver = {
