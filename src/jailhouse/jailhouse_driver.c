@@ -1,5 +1,5 @@
 /*
- * jailhouse_driver.c: hypervisor driver for managing Jailhouse inmates
+ * jailhouse_driver.c: hypervisor driver for managing Jailhouse cells
  *
  * Copyright (C) 2015 Linutronix GmbH
  *
@@ -53,13 +53,19 @@
 #define STATEFAILEDSTRING           "failed          "
 #define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
 
-static struct jailhouse_cell *lastQueryCells;
-static int lastQueryCount;
-
+/*
+ *  The driver requeries the cells on most calls, it stores the result of the last query, so it can copy the UUIDs in the new query if the cell is the same(otherwise it just generates a new one)
+ *  not preserving the UUID results in a lot of bugs in libvirts clients.
+ */
 struct jailhouse_driver {
     char *binary;
+    int lastQueryCellsCount;
+    struct jailhouse_cell* lastQueryCells;
 };
 
+/*
+ *  CPUs are currently unused but this might change
+ */
 struct jailhouse_cell {
     int id;
     char name[NAMELENGTH+1];
@@ -182,7 +188,7 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
 }
 
 /*
- *  returns the Libvirts equivalent of the cell state passed to it
+ *  Returns the libvirts equivalent of the cell state passed to it
  */
 static virDomainState
 cellToVirDomainState(struct jailhouse_cell *cell)
@@ -196,6 +202,9 @@ cellToVirDomainState(struct jailhouse_cell *cell)
     }
 }
 
+/*
+ *  Returns a new virDomainPtr filled with the data of the jailhouse_cell
+ */
 static virDomainPtr
 cellToVirDomainPtr(virConnectPtr conn, struct jailhouse_cell *cell)
 {
@@ -205,64 +214,58 @@ cellToVirDomainPtr(virConnectPtr conn, struct jailhouse_cell *cell)
 }
 
 /*
- *  Checks if any cells have changed by comparing names and ids
+ *  Check lastQueryCells for cell and copies uuid if found, otherwise generates a new one, this is to preserve UUID in libvirt
  */
-static int
-cellsChanged(struct jailhouse_cell *list)
-{
+static void setUUID(struct jailhouse_cell *cells, int count, struct jailhouse_cell* cell){
     int i;
-    for(i = 0;i < lastQueryCount; i++)
-        if(strcmp(lastQueryCells[i].name, list[i].name) != 0 || lastQueryCells[i].id != list[i].id)
-            return true;
-    return false;
+    for (i = 0; i < count; i++){
+        if(strncmp(cells[i].name, cell->name, NAMELENGTH+1))
+            continue;
+        memcpy(cell->uuid, cells[i].uuid, VIR_UUID_BUFLEN);
+        return;
+    }
+    virUUIDGenerate(cell->uuid);
 }
 
 /*
- *  Updates lastQueryCells and lastQueryCount to represent the current state of cells changes states and CPUs accordingly,
- *  but preserves uuid so virt-managers list doesn't reset every time it requeries the domains
+ *  Frees the old list of cells, gets the new one and preserves UUID if cells were present in the old
  */
 static void
 getCurrentCellList(virConnectPtr conn)
 {
-    struct jailhouse_cell *list = NULL;
-    int count = parseListOutput(conn, &list);
-    if(lastQueryCount != count || cellsChanged(list)){
-        int i;
-        if(lastQueryCells != NULL){
-            for(i = 0; i < lastQueryCount; i++){
-                if(lastQueryCells[i].assignedCPUs != NULL) free(lastQueryCells[i].assignedCPUs);
-                if(lastQueryCells[i].failedCPUs != NULL) free(lastQueryCells[i].failedCPUs);
-            }
-            free(lastQueryCells);
+    
+    int lastCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *lastCells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    struct jailhouse_cell *cells = NULL;
+    int i;
+    int count = parseListOutput(conn, &cells);
+    for(i = 0; i < count; i++)
+        setUUID(lastCells, lastCount, cells+i);
+    if(lastCells != NULL){
+        for(i = 0; i < lastCount; i++){
+            if(lastCells[i].assignedCPUs != NULL) free(lastCells[i].assignedCPUs);
+            if(lastCells[i].failedCPUs != NULL) free(lastCells[i].failedCPUs);
         }
-        lastQueryCells = list;
-        lastQueryCount = count;
-        for(i = 0; i < count; i++) virUUIDGenerate(list[i].uuid);
-    } else {
-        int i;
-        for(i = 0; i < count; i++){
-            if(lastQueryCells[i].assignedCPUs != NULL) free(lastQueryCells[i].assignedCPUs);
-            if(lastQueryCells[i].failedCPUs != NULL) free(lastQueryCells[i].failedCPUs);
-            lastQueryCells[i].assignedCPUs = list[i].assignedCPUs;
-            lastQueryCells[i].failedCPUs = list[i].failedCPUs;
-            lastQueryCells[i].state = list[i].state;
-        }
-        free(list);
+        free(lastCells);
     }
+    ((struct jailhouse_driver *)conn->privateData)->lastQueryCells = cells;
+    ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount = count;
 }
 
 /*
  *  Converts libvirts virDomainPtr to the internal jailhouse_cell by parsing the "jailhouse cell list" output
- *  and looking up the id and name of the virDomainPtr, returns NULL if cell has been destroyed in the meantime.
+ *  and looking up the name of the virDomainPtr, returns NULL if cell is no longer present
  */
 static struct jailhouse_cell *
 virDomainPtrToCell(virDomainPtr dom)
 {
     getCurrentCellList(dom->conn);
+    int cellsCount = ((struct jailhouse_driver *)dom->conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)dom->conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < lastQueryCount; i++)
-        if (dom->id == lastQueryCells[i].id && strcmp(dom->name, lastQueryCells[i].name) == 0)
-                return lastQueryCells+i;
+    for(i = 0; i < cellsCount; i++)
+        if (dom->id == cells[i].id)
+                return cells+i;
     return NULL;
 }
 
@@ -302,6 +305,8 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     }
     struct jailhouse_driver *driver = malloc(sizeof(struct jailhouse_driver));
     driver->binary = binary;
+    driver->lastQueryCells = NULL;
+    driver->lastQueryCellsCount = 0;
     conn->privateData = driver;
     return VIR_DRV_OPEN_SUCCESS;
 }
@@ -310,12 +315,14 @@ static int
 jailhouseConnectClose(virConnectPtr conn)
 {
     int i;
-    if(lastQueryCells != NULL){
-        for(i = 0;i < lastQueryCount; i++){
-            if(lastQueryCells[i].assignedCPUs != NULL) free(lastQueryCells[i].assignedCPUs);
-            if(lastQueryCells[i].failedCPUs != NULL) free(lastQueryCells[i].failedCPUs);
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    if(cells != NULL){
+        for(i = 0; i < cellsCount; i++){
+            if(cells[i].assignedCPUs != NULL) free(cells[i].assignedCPUs);
+            if(cells[i].failedCPUs != NULL) free(cells[i].failedCPUs);
         }
-        free(lastQueryCells);
+        free(cells);
     }
     free(((struct jailhouse_driver *)conn->privateData)->binary);
     free(conn->privateData);
@@ -327,16 +334,18 @@ static int
 jailhouseConnectNumOfDomains(virConnectPtr conn)
 {
     getCurrentCellList(conn);
-    return lastQueryCount;
+    return ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
 }
 
 static int
 jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
 {
     getCurrentCellList(conn);
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < maxids && i < lastQueryCount; i++)
-        ids[i] = lastQueryCells[i].id;
+    for(i = 0; i < maxids && i < cellsCount; i++)
+        ids[i] = cells[i].id;
     return i;
 
 }
@@ -345,21 +354,26 @@ static int
 jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsigned int flags ATTRIBUTE_UNUSED)
 {
     getCurrentCellList(conn);
-    *domains = malloc(sizeof(virDomainPtr) * (lastQueryCount+1));
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    *domains = malloc(sizeof(virDomainPtr) * (cellsCount+1));
     int i;
-    for(i = 0;i < lastQueryCount; i++) (*domains)[i] = cellToVirDomainPtr(conn, lastQueryCells+i);
-    (*domains)[lastQueryCount] = NULL;
-    return lastQueryCount;
+    for(i = 0;i < cellsCount; i++)
+        (*domains)[i] = cellToVirDomainPtr(conn, cells+i);
+    (*domains)[cellsCount] = NULL;
+    return cellsCount;
 }
 
 static virDomainPtr
 jailhouseDomainLookupByID(virConnectPtr conn, int id)
 {
     getCurrentCellList(conn);
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < lastQueryCount; i++)
-        if(lastQueryCells[i].id == id)
-            return cellToVirDomainPtr(conn, lastQueryCells+i);
+    for(i = 0; i < cellsCount; i++)
+        if(cells[i].id == id)
+            return cellToVirDomainPtr(conn, cells+i);
     return NULL;
 }
 
@@ -367,10 +381,12 @@ static virDomainPtr
 jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
 {
     getCurrentCellList(conn);
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < lastQueryCount; i++)
-        if(strcmp(lastQueryCells[i].name, lookupName) == 0)
-            return cellToVirDomainPtr(conn, lastQueryCells+i);
+    for(i = 0; i < cellsCount; i++)
+        if(strcmp(cells[i].name, lookupName) == 0)
+            return cellToVirDomainPtr(conn, cells+i);
     return NULL;
 }
 
@@ -378,15 +394,21 @@ static virDomainPtr
 jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
 {
     getCurrentCellList(conn);
+    int cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     int i;
-    for(i = 0; i < lastQueryCount; i++){
-        if(memcmp(lastQueryCells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
-            return cellToVirDomainPtr(conn, lastQueryCells+i);
+    for(i = 0; i < cellsCount; i++){
+        if(memcmp(cells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
+            return cellToVirDomainPtr(conn, cells+i);
     }
     return NULL;
 
 }
 
+/*
+ *  There currently is no straightforward way for the driver to retrieve those,
+ *  so maxMem, memory and cpuTime have dummy values
+ */
 static int
 jailhouseDomainGetInfo(virDomainPtr domain, virDomainInfoPtr info)
 {
