@@ -296,7 +296,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
             return VIR_DRV_OPEN_DECLINED;
     char* binary;
     if (conn->uri->path == NULL) {
-        if (VIR_STRDUP(binary, "jailhouse") > 0)
+        if (VIR_STRDUP(binary, "jailhouse") != 1)
             return VIR_DRV_OPEN_ERROR;
     } else {
         if (!virFileIsExecutable(conn->uri->path)) {
@@ -305,7 +305,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
                            conn->uri->path);
             return VIR_DRV_OPEN_ERROR;
         }
-        if (VIR_STRDUP(binary, conn->uri->path) > 0)
+        if (VIR_STRDUP(binary, conn->uri->path) != 1)
             return VIR_DRV_OPEN_ERROR;
     }
     virCommandPtr cmd = virCommandNew(binary);
@@ -319,7 +319,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
                        conn->uri->path);
         return VIR_DRV_OPEN_ERROR;
     }
-    if (STREQLEN(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))) {
+    if (STRNEQLEN(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("%s doesn't seem to be a correct Jailhouse binary."),
                        conn->uri->path);
@@ -533,7 +533,7 @@ static char *
 jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
 {
     char* caps;
-    if (VIR_STRDUP(caps, "<capabilities></capabilities>") > 0)
+    if (VIR_STRDUP(caps, "<capabilities></capabilities>") != 1)
         return NULL;
     return caps;
 }
@@ -553,7 +553,7 @@ jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
             <uuid>%s</uuid>\n\
             </domain>", domain->name, uuid);
     char* result;
-    if (VIR_STRDUP(result, buf) > 0)
+    if (VIR_STRDUP(result, buf) != 1)
         return NULL;
     return result;
 }
