@@ -1236,6 +1236,7 @@ qemuMigrationCookieXMLParse(qemuMigrationCookiePtr mig,
                            _("Unsupported migration cookie feature %s"),
                            str);
             VIR_FREE(str);
+            goto error;
         }
         VIR_FREE(str);
     }
@@ -3387,7 +3388,8 @@ qemuMigrationPrepareAny(virQEMUDriverPtr driver,
 
     if (!(mig = qemuMigrationEatCookie(driver, vm, cookiein, cookieinlen,
                                        QEMU_MIGRATION_COOKIE_LOCKSTATE |
-                                       QEMU_MIGRATION_COOKIE_NBD)))
+                                       QEMU_MIGRATION_COOKIE_NBD |
+                                       QEMU_MIGRATION_COOKIE_MEMORY_HOTPLUG)))
         goto cleanup;
 
     if (STREQ_NULLABLE(protocol, "rdma") &&

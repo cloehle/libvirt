@@ -485,6 +485,7 @@ virStorageBackendCreateRaw(virConnectPtr conn ATTRIBUTE_UNUSED,
     int operation_flags;
     bool reflink_copy = false;
     mode_t open_mode = VIR_STORAGE_DEFAULT_VOL_PERM_MODE;
+    bool created = false;
 
     virCheckFlags(VIR_STORAGE_VOL_CREATE_PREALLOC_METADATA |
                   VIR_STORAGE_VOL_CREATE_REFLINK,
@@ -531,6 +532,7 @@ virStorageBackendCreateRaw(virConnectPtr conn ATTRIBUTE_UNUSED,
                              vol->target.path);
         goto cleanup;
     }
+    created = true;
 
     if (vol->target.nocow) {
 #ifdef __linux__
@@ -557,6 +559,10 @@ virStorageBackendCreateRaw(virConnectPtr conn ATTRIBUTE_UNUSED,
         ret = -1;
 
  cleanup:
+    if (ret < 0 && created)
+        ignore_value(virFileRemove(vol->target.path,
+                                   vol->target.perms->uid,
+                                   vol->target.perms->gid));
     VIR_FORCE_CLOSE(fd);
     return ret;
 }
@@ -677,7 +683,9 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
     struct stat st;
     gid_t gid;
     uid_t uid;
-    mode_t mode;
+    mode_t mode = (vol->target.perms->mode == (mode_t) -1 ?
+                   VIR_STORAGE_DEFAULT_VOL_PERM_MODE :
+                   vol->target.perms->mode);
     bool filecreated = false;
     int ret = -1;
 
@@ -690,6 +698,7 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
 
         virCommandSetUID(cmd, vol->target.perms->uid);
         virCommandSetGID(cmd, vol->target.perms->gid);
+        virCommandSetUmask(cmd, S_IRWXUGO ^ mode);
 
         if (virCommandRun(cmd, NULL) == 0) {
             /* command was successfully run, check if the file was created */
@@ -698,11 +707,12 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
         }
     }
 
-    /* don't change uid/gid if we retry */
-    virCommandSetUID(cmd, -1);
-    virCommandSetGID(cmd, -1);
-
     if (!filecreated) {
+        /* don't change uid/gid/mode if we retry */
+        virCommandSetUID(cmd, -1);
+        virCommandSetGID(cmd, -1);
+        virCommandSetUmask(cmd, 0);
+
         if (virCommandRun(cmd, NULL) < 0)
             goto cleanup;
         if (stat(vol->target.path, &st) < 0) {
@@ -710,6 +720,7 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
                                  _("failed to create %s"), vol->target.path);
             goto cleanup;
         }
+        filecreated = true;
     }
 
     uid = (vol->target.perms->uid != st.st_uid) ? vol->target.perms->uid
@@ -725,9 +736,8 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
         goto cleanup;
     }
 
-    mode = (vol->target.perms->mode == (mode_t) -1 ?
-            VIR_STORAGE_DEFAULT_VOL_PERM_MODE : vol->target.perms->mode);
-    if (chmod(vol->target.path, mode) < 0) {
+    if (mode != (st.st_mode & S_IRWXUGO) &&
+        chmod(vol->target.path, mode) < 0) {
         virReportSystemError(errno,
                              _("cannot set mode of '%s' to %04o"),
                              vol->target.path, mode);
@@ -737,6 +747,9 @@ virStorageBackendCreateExecCommand(virStoragePoolObjPtr pool,
     ret = 0;
 
  cleanup:
+    if (ret < 0 && filecreated)
+        virFileRemove(vol->target.path, vol->target.perms->uid,
+                      vol->target.perms->gid);
     return ret;
 }
 
