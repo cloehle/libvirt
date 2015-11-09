@@ -442,7 +442,7 @@ virGlobalInit(void)
 # endif
 #ifdef WITH_JAILHOUSE
     if (jailhouseRegister() == -1)
-	goto error;
+    goto error;
 #endif
 #endif
 #ifdef WITH_REMOTE
