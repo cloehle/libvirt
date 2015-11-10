@@ -3616,3 +3616,57 @@ qemuDomainUpdateCurrentMemorySize(virQEMUDriverPtr driver,
 
     return 0;
 }
+
+
+/**
+ * qemuDomainGetMlockLimitBytes:
+ *
+ * @def: domain definition
+ *
+ * Returns the size of the memory in bytes that needs to be set as
+ * RLIMIT_MEMLOCK for purpose of VFIO device passthrough.
+ * If a mem.hard_limit is set, then that value is preferred; otherwise, the
+ * value returned may depend upon the architecture or devices present.
+ */
+unsigned long long
+qemuDomainGetMlockLimitBytes(virDomainDefPtr def)
+{
+    unsigned long long memKB;
+
+    /* VFIO requires all of the guest's memory to be locked resident, plus some
+     * amount for IO space. Alex Williamson suggested adding 1GiB for IO space
+     * just to be safe (some finer tuning might be nice, though). */
+    if (virMemoryLimitIsSet(def->mem.hard_limit))
+        memKB = def->mem.hard_limit;
+    else
+        memKB = virDomainDefGetMemoryActual(def) + 1024 * 1024;
+
+    return memKB << 10;
+}
+
+
+/**
+ * @def: domain definition
+ *
+ * Returns ture if the locked memory limit needs to be set or updated due to
+ * configuration or passthrough devices.
+ * */
+bool
+qemuDomainRequiresMlock(virDomainDefPtr def)
+{
+    size_t i;
+
+    if (def->mem.locked)
+        return true;
+
+    for (i = 0; i < def->nhostdevs; i++) {
+        virDomainHostdevDefPtr dev = def->hostdevs[i];
+
+        if (dev->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS &&
+            dev->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI &&
+            dev->source.subsys.u.pci.backend == VIR_DOMAIN_HOSTDEV_PCI_BACKEND_VFIO)
+            return true;
+    }
+
+    return false;
+}

@@ -114,11 +114,6 @@ static const char testStatusXMLPrefix[] =
 "    <vcpu pid='3803519'/>\n"
 "  </vcpus>\n"
 "  <qemuCaps>\n"
-"    <flag name='vnc-colon'/>\n"
-"    <flag name='no-reboot'/>\n"
-"    <flag name='drive'/>\n"
-"    <flag name='name'/>\n"
-"    <flag name='uuid'/>\n"
 "    <flag name='vnet-hdr'/>\n"
 "    <flag name='qxl.vgamem_mb'/>\n"
 "    <flag name='qxl-vga.vgamem_mb'/>\n"
@@ -403,9 +398,6 @@ mymain(void)
     DO_TEST("floppy-drive-fat");
     DO_TEST("disk-drive-fat");
     DO_TEST("disk-drive-fmt-qcow");
-    DO_TEST("disk-drive-cache-v1-wt");
-    DO_TEST("disk-drive-cache-v1-wb");
-    DO_TEST("disk-drive-cache-v1-none");
     DO_TEST("disk-drive-copy-on-read");
     DO_TEST("disk-drive-network-nbd");
     DO_TEST("disk-drive-network-nbd-export");
