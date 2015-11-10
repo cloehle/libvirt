@@ -201,6 +201,7 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
         i++; // skip \n
     }
     VIR_FREE(output);
+    virCommandFree(cmd);
     return count;
     error:
     for (i = 0; i < count; i++) {
@@ -211,6 +212,7 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     *parsedOutput = NULL;
     VIR_FREE(output);
     output = NULL;
+    virCommandFree(cmd);
     return -1;
 }
 
@@ -323,17 +325,16 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Executing '%s --version' failed."),
                        conn->uri->path);
-        VIR_FREE(output);
-        return VIR_DRV_OPEN_ERROR;
+        goto error;
     }
     if (STRNEQLEN(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("%s doesn't seem to be a correct Jailhouse binary."),
                        conn->uri->path);
-        VIR_FREE(output);
-        return VIR_DRV_OPEN_ERROR;
+        goto error;
     }
     VIR_FREE(output);
+    virCommandFree(cmd);
     struct jailhouse_driver *driver;
     if (VIR_ALLOC(driver))
         return VIR_DRV_OPEN_ERROR;
@@ -342,6 +343,10 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     driver->lastQueryCellsCount = 0;
     conn->privateData = driver;
     return VIR_DRV_OPEN_SUCCESS;
+    error:
+    VIR_FREE(output);
+    virCommandFree(cmd);
+    return VIR_DRV_OPEN_ERROR;
 }
 
 static int
@@ -493,6 +498,7 @@ jailhouseDomainShutdown(virDomainPtr domain)
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
     int resultcode = virCommandRun(cmd, NULL);
+    virCommandFree(cmd);
     if (resultcode < 0)
         return -1;
     return 0;
@@ -513,6 +519,7 @@ jailhouseDomainDestroy(virDomainPtr domain)
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
     int resultcode = virCommandRun(cmd, NULL);
+    virCommandFree(cmd);
     if (resultcode < 0)
         return -1;
     return 0;
@@ -529,6 +536,7 @@ jailhouseDomainCreate(virDomainPtr domain)
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
     int resultcode = virCommandRun(cmd, NULL);
+    virCommandFree(cmd);
     if (resultcode < 0)
         return -1;
     return 0;
