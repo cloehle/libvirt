@@ -148,10 +148,10 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     virCommandAddEnvPassCommon(cmd);
     char *output;
     virCommandSetOutputBuffer(cmd, &output);
-    if (virCommandRun(cmd, NULL) < 0)
-        return -1;
-    size_t i = 0;
     size_t count = -1; //  Don't count table header line
+    size_t i = 0;
+    if (virCommandRun(cmd, NULL) < 0)
+        goto error;
     while (output[i] != '\0') {
         if (output[i] == '\n') count++;
         i++;
@@ -159,9 +159,10 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     if (VIR_ALLOC_N(*parsedOutput, count)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                   _("Failed to allocate jailhouse_cell array of size %zu"), count);
-        return 0;
+        goto error;
     }
-    if (*parsedOutput == NULL) { VIR_FREE(output); return 0; }
+    if (*parsedOutput == NULL)
+        goto error;
     i = 0;
     size_t j;
     while (output[i++] != '\n'); //  Skip table header line
@@ -208,7 +209,9 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     }
     VIR_FREE(*parsedOutput);
     *parsedOutput = NULL;
-    return 0;
+    VIR_FREE(output);
+    output = NULL;
+    return -1;
 }
 
 /*
@@ -320,14 +323,17 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("Executing '%s --version' failed."),
                        conn->uri->path);
+        VIR_FREE(output);
         return VIR_DRV_OPEN_ERROR;
     }
     if (STRNEQLEN(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                        _("%s doesn't seem to be a correct Jailhouse binary."),
                        conn->uri->path);
+        VIR_FREE(output);
         return VIR_DRV_OPEN_ERROR;
     }
+    VIR_FREE(output);
     struct jailhouse_driver *driver;
     if (VIR_ALLOC(driver))
         return VIR_DRV_OPEN_ERROR;
@@ -381,16 +387,21 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
     getCurrentCellList(conn);
     size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    if (cellsCount == -1)
+        goto error;
     if (VIR_ALLOC_N(*domains, cellsCount+1)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                     _("Failed to allocate virDomainPtr array of size %zu"), cellsCount+1);
-        return 0;
+        goto error;
     }
     size_t i;
     for (i = 0; i < cellsCount; i++)
         (*domains)[i] = cellToVirDomainPtr(conn, cells+i);
     (*domains)[cellsCount] = NULL;
     return cellsCount;
+    error:
+    *domains = NULL;
+    return -1;
 }
 
 static virDomainPtr
@@ -398,11 +409,14 @@ jailhouseDomainLookupByID(virConnectPtr conn, int id)
 {
     getCurrentCellList(conn);
     size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    if (cellsCount == -1)
+        return NULL;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (cells[i].id == id)
             return cellToVirDomainPtr(conn, cells+i);
+    virReportError(VIR_ERR_NO_DOMAIN, NULL);
     return NULL;
 }
 
@@ -411,11 +425,14 @@ jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
 {
     getCurrentCellList(conn);
     size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    if (cellsCount == -1)
+        return NULL;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (STREQ(cells[i].name, lookupName))
             return cellToVirDomainPtr(conn, cells+i);
+    virReportError(VIR_ERR_NO_DOMAIN, NULL);
     return NULL;
 }
 
@@ -424,11 +441,14 @@ jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
 {
     getCurrentCellList(conn);
     size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    if (cellsCount == -1)
+        return NULL;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (memcmp(cells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
             return cellToVirDomainPtr(conn, cells+i);
+    virReportError(VIR_ERR_NO_DOMAIN, NULL);
     return NULL;
 }
 
@@ -472,7 +492,8 @@ jailhouseDomainShutdown(virDomainPtr domain)
     snprintf(buf, IDLENGTH+1, "%d", domain->id);
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
-    if (virCommandRun(cmd, NULL) < 0)
+    int resultcode = virCommandRun(cmd, NULL);
+    if (resultcode < 0)
         return -1;
     return 0;
 }
@@ -491,7 +512,8 @@ jailhouseDomainDestroy(virDomainPtr domain)
     snprintf(buf, IDLENGTH+1, "%d", domain->id);
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
-    if (virCommandRun(cmd, NULL) < 0)
+    int resultcode = virCommandRun(cmd, NULL);
+    if (resultcode < 0)
         return -1;
     return 0;
 }
@@ -506,10 +528,8 @@ jailhouseDomainCreate(virDomainPtr domain)
     snprintf(buf, IDLENGTH+1, "%d", domain->id);
     virCommandAddArg(cmd, buf);
     virCommandAddEnvPassCommon(cmd);
-    char *output = NULL, *errors = NULL;
-    virCommandSetOutputBuffer(cmd, &output);
-    virCommandSetErrorBuffer(cmd, &errors);
-    if (virCommandRun(cmd, NULL) < 0)
+    int resultcode = virCommandRun(cmd, NULL);
+    if (resultcode < 0)
         return -1;
     return 0;
 }
