@@ -167,19 +167,23 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     size_t j;
     while (output[i++] != '\n'); //  Skip table header line
     for (j = 0; j < count; j++) {
+        size_t k;
+        for (k = 0; k <= IDLENGTH; k++) // char after number needs to be NUL for virStrToLong
+            if (output[i+k] == ' ') {
+                output[i+k] = '\0';
+                break;
+            }
         char c = output[i+IDLENGTH];
         output[i+IDLENGTH] = '\0'; //   in case ID is 8 chars long, so beginning of name won't get parsed
-        if (virStrToLong_i(output+i, NULL, 0, &(*parsedOutput)[j].id)) {
+        if (virStrToLong_i(output+i, NULL, 0, &(*parsedOutput)[j].id))
             virReportError(VIR_ERR_INTERNAL_ERROR,
                     _("Failed to parse id to long: %s"), output+i);
-        }
         output[i+IDLENGTH] = c;
         i += IDLENGTH;
         if (virStrncpy((*parsedOutput)[j].name, output+i, NAMELENGTH, NAMELENGTH+1) == NULL)
             // should never happen
             goto error;
         (*parsedOutput)[j].name[NAMELENGTH] = '\0';
-        size_t k;
         for (k = 0; k < NAMELENGTH; k++)
             if ((*parsedOutput)[j].name[k] == ' ')
                     break;
