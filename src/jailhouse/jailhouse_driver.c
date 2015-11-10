@@ -37,7 +37,6 @@
 
 #define VIR_FROM_THIS VIR_FROM_JAILHOUSE
 
-
 #define IDLENGTH 8
 #define NAMELENGTH 24
 #define STATELENGTH 16
@@ -378,7 +377,7 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
 static int
 jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsigned int flags)
 {
-    virCheckFlags(0, 0);
+    virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, 0);
     getCurrentCellList(conn);
     size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
     struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
