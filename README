@@ -1,3 +1,13 @@
-The jailhouse hypervisor driver for the Libvirt project aims to provide rudimentary support for managing jailhouse with the libvirt library. The main advantage of this is the possibility to use virt-manager as a GUI to manage Jailhouse cells. Thus the driver is mainly built around the API calls that virt-manager uses and needs.
-Due to the concept of Jailhouse a lot of Libvirt functions can't be realized, so this driver isn't as full-featured as upstream drivers of the Libvirt project.
-Currently the driver relies on the Jailhouse binary, which has to be passed when connecting a Libvirt client to it(e.g. virt-manager -c jailhouse:///path/to/jailhouse/tools/jailhouse). This has the advantage that remote support can be easily done by not passing the original Jailhouse binary, but an executable that redirects its parameters through ssh to the real Jailhouse binary and outputs that output. Be aware though that the driver doesn't store any information about cells, so most API calls use "jailhouse cell list" every time they're called to get the current state.
+
+         LibVirt : simple API for virtualization
+
+  Libvirt is a C toolkit to interact with the virtualization capabilities
+of recent versions of Linux (and other OSes). It is free software
+available under the GNU Lesser General Public License. Virtualization of
+the Linux Operating System means the ability to run multiple instances of
+Operating Systems concurrently on a single hardware system where the basic
+resources are driven by a Linux instance. The library aim at providing
+long term stable C API initially for the Xen paravirtualization but
+should be able to integrate other virtualization mechanisms if needed.
+
+Daniel Veillard <veillard@redhat.com>
