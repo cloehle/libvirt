@@ -1,3 +1,14 @@
-The jailhouse hypervisor driver for the libvirt project aims to provide rudimentary support for managing jailhouse with the libvirt library. The main advantage of this is the possibility to use virt-manager as a GUI to manage Jailhouse cells. Thus the driver is mainly built around the API calls that virt-manager uses and needs.
-Due to the concept of Jailhouse a lot of libvirt functions can't be realized, so this driver isn't as full-featured as upstream drivers of the libvirt project.
-Currently the driver relies on the Jailhouse binary, which has to be passed when connecting a libvirt client to it(e.g. virt-manager -c jailhouse:///path/to/jailhouse/tools/jailhouse). Be aware though that the driver doesn't store any information about cells, so most API calls use "jailhouse cell list" every time they're called to get the current state.
+The jailhouse hypervisor driver for the libvirt project aims to provide
+rudimentary support for managing jailhouse with the libvirt library.
+The main advantage of this is the possibility to use virt-manager as a GUI to
+manage Jailhouse cells. Thus the driver is mainly built around the API calls
+that virt-manager uses and needs.
+Due to the concept of Jailhouse a lot of libvirt functions can't be realized,
+so this driver isn't as full-featured as upstream drivers of the
+libvirt project.
+Currently the driver relies on the Jailhouse binary, which has to be in $PATH
+or passed when connecting a libvirt client to it
+(e.g. virt-manager -c jailhouse:///path/to/jailhouse/tools/jailhouse).
+Be aware though that the driver doesn't store any information about cells,
+so most API calls use "jailhouse cell list" every time they're called to get
+the current state.
