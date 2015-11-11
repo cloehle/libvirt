@@ -52,7 +52,9 @@
 #define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
 
 /*
- *  The driver requeries the cells on most calls, it stores the result of the last query, so it can copy the UUIDs in the new query if the cell is the same(otherwise it just generates a new one)
+ *  The driver requeries the cells on most calls, it stores the result of the
+ *  last query, so it can copy the UUIDs in the new query if the cell is the 
+ *  same(otherwise it just generates a new one).
  *  not preserving the UUID results in a lot of bugs in libvirts clients.
  */
 struct jailhouse_driver {
