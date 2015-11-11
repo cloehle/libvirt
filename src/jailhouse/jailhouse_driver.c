@@ -1,5 +1,5 @@
 /*
- * jailhouse_driver.c: hypervisor driver for managing Jailhouse cells
+ * virJailhouseDriver.c: hypervisor driver for managing Jailhouse cells
  *
  * Copyright (C) 2015 Linutronix GmbH
  *
@@ -52,30 +52,34 @@
 #define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
 
 /*
- *  The driver requeries the cells on most calls, it stores the result of the
- *  last query, so it can copy the UUIDs in the new query if the cell is the 
- *  same(otherwise it just generates a new one).
- *  not preserving the UUID results in a lot of bugs in libvirts clients.
- */
-struct jailhouse_driver {
-    char *binary;
-    size_t lastQueryCellsCount;
-    struct jailhouse_cell* lastQueryCells;
-};
-
-/*
  *  CPUs are currently unused but this might change
  */
-struct jailhouse_cell {
+struct virJailhouseCell {
     int id;
     char name[NAMELENGTH+1];
     int state;
-    int *assignedCPUs; //Don't use cpumask because remote system might have different # of cpus
+    int *assignedCPUs;
     int assignedCPUsLength;
     int *failedCPUs;
     int failedCPUsLength;
     unsigned char uuid[VIR_UUID_BUFLEN];
 };
+typedef struct virJailhouseCell virJailhouseCell;
+typedef virJailhouseCell *virJailhouseCellPtr;
+
+/*
+ *  The driver requeries the cells on most calls, it stores the result of the
+ *  last query, so it can copy the UUIDs in the new query if the cell is the 
+ *  same(otherwise it just generates a new one).
+ *  not preserving the UUID results in a lot of bugs in libvirts clients.
+ */
+struct virJailhouseDriver {
+    char *binary;
+    size_t lastQueryCellsCount;
+    virJailhouseCellPtr lastQueryCells;
+};
+typedef struct virJailhouseDriver virJailhouseDriver;
+typedef virJailhouseDriver *virJailhouseDriverPtr;
 
 /*
  *  helper function that returns the number as an integer and sets i to be the first char after the number
@@ -139,12 +143,12 @@ parseCPUs(char* output, int **cpusptr)
 }
 
 /*
- *  calls "jailhouse cell list" and parses the output in an array of jailhouse_cell
+ *  calls "jailhouse cell list" and parses the output in an array of virJailhouseCell
  */
 static size_t
-parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
+parseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutput)
 {
-    virCommandPtr cmd = virCommandNew(((struct jailhouse_driver *)conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "list");
     virCommandAddEnvPassCommon(cmd);
@@ -160,7 +164,7 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
     }
     if (VIR_ALLOC_N(*parsedOutput, count)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
-                  _("Failed to allocate jailhouse_cell array of size %zu"), count);
+                  _("Failed to allocate virJailhouseCell array of size %zu"), count);
         goto error;
     }
     if (*parsedOutput == NULL)
@@ -222,7 +226,7 @@ parseListOutput(virConnectPtr conn, struct jailhouse_cell **parsedOutput)
  *  Returns the libvirts equivalent of the cell state passed to it
  */
 static virDomainState
-cellToVirDomainState(struct jailhouse_cell *cell)
+cellToVirDomainState(virJailhouseCellPtr cell)
 {
     switch (cell->state) {
         case STATERUNNING: return VIR_DOMAIN_RUNNING;
@@ -234,10 +238,10 @@ cellToVirDomainState(struct jailhouse_cell *cell)
 }
 
 /*
- *  Returns a new virDomainPtr filled with the data of the jailhouse_cell
+ *  Returns a new virDomainPtr filled with the data of the virJailhouseCell
  */
 static virDomainPtr
-cellToVirDomainPtr(virConnectPtr conn, struct jailhouse_cell *cell)
+cellToVirDomainPtr(virConnectPtr conn,  virJailhouseCellPtr cell)
 {
     virDomainPtr dom = virGetDomain(conn, cell->name, cell->uuid);
     dom->id = cell->id;
@@ -247,7 +251,7 @@ cellToVirDomainPtr(virConnectPtr conn, struct jailhouse_cell *cell)
 /*
  *  Check cells for cell and copies UUID if found, otherwise generates a new one, this is to preserve UUID in libvirt
  */
-static void setUUID(struct jailhouse_cell *cells, size_t count, struct jailhouse_cell* cell) {
+static void setUUID(virJailhouseCellPtr cells, size_t count, virJailhouseCellPtr cell) {
     size_t i;
     for (i = 0; i < count; i++) {
         if (strncmp(cells[i].name, cell->name, NAMELENGTH+1))
@@ -264,9 +268,9 @@ static void setUUID(struct jailhouse_cell *cells, size_t count, struct jailhouse
 static void
 getCurrentCellList(virConnectPtr conn)
 {
-    size_t lastCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
-    struct jailhouse_cell *lastCells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
-    struct jailhouse_cell *cells = NULL;
+    size_t lastCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    virJailhouseCellPtr lastCells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = NULL;
     size_t i;
     size_t count = parseListOutput(conn, &cells);
     for (i = 0; i < count; i++)
@@ -276,20 +280,20 @@ getCurrentCellList(virConnectPtr conn)
         VIR_FREE(lastCells[i].failedCPUs);
     }
     VIR_FREE(lastCells);
-    ((struct jailhouse_driver *)conn->privateData)->lastQueryCells = cells;
-    ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount = count;
+    ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells = cells;
+    ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount = count;
 }
 
 /*
- *  Converts libvirts virDomainPtr to the internal jailhouse_cell by parsing the "jailhouse cell list" output
+ *  Converts libvirts virDomainPtr to the internal virJailhouseCell by parsing the "jailhouse cell list" output
  *  and looking up the name of the virDomainPtr, returns NULL if cell is no longer present
  */
-static struct jailhouse_cell *
+static virJailhouseCellPtr
 virDomainPtrToCell(virDomainPtr dom)
 {
     getCurrentCellList(dom->conn);
-    size_t cellsCount = ((struct jailhouse_driver *)dom->conn->privateData)->lastQueryCellsCount;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)dom->conn->privateData)->lastQueryCells;
+    size_t cellsCount = ((virJailhouseDriverPtr)dom->conn->privateData)->lastQueryCellsCount;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)dom->conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (dom->id == cells[i].id)
@@ -337,7 +341,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     }
     VIR_FREE(output);
     virCommandFree(cmd);
-    struct jailhouse_driver *driver;
+    virJailhouseDriverPtr driver;
     if (VIR_ALLOC(driver))
         return VIR_DRV_OPEN_ERROR;
     driver->binary = binary;
@@ -355,14 +359,14 @@ static int
 jailhouseConnectClose(virConnectPtr conn)
 {
     size_t i;
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     for (i = 0; i < cellsCount; i++) {
         VIR_FREE(cells[i].assignedCPUs);
         VIR_FREE(cells[i].failedCPUs);
     }
     VIR_FREE(cells);
-    VIR_FREE(((struct jailhouse_driver *)conn->privateData)->binary);
+    VIR_FREE(((virJailhouseDriverPtr)conn->privateData)->binary);
     VIR_FREE(conn->privateData);
     conn->privateData = NULL;
     return 0;
@@ -372,15 +376,15 @@ static int
 jailhouseConnectNumOfDomains(virConnectPtr conn)
 {
     getCurrentCellList(conn);
-    return ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    return ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
 }
 
 static int
 jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
 {
     getCurrentCellList(conn);
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < maxids && i < cellsCount; i++)
         ids[i] = cells[i].id;
@@ -392,8 +396,8 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
 {
     virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, 0);
     getCurrentCellList(conn);
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     if (cellsCount == -1)
         goto error;
     if (VIR_ALLOC_N(*domains, cellsCount+1)) {
@@ -415,10 +419,10 @@ static virDomainPtr
 jailhouseDomainLookupByID(virConnectPtr conn, int id)
 {
     getCurrentCellList(conn);
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (cells[i].id == id)
@@ -431,10 +435,10 @@ static virDomainPtr
 jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
 {
     getCurrentCellList(conn);
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (STREQ(cells[i].name, lookupName))
@@ -447,10 +451,10 @@ static virDomainPtr
 jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
 {
     getCurrentCellList(conn);
-    size_t cellsCount = ((struct jailhouse_driver *)conn->privateData)->lastQueryCellsCount;
+    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    struct jailhouse_cell *cells = ((struct jailhouse_driver *)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     size_t i;
     for (i = 0; i < cellsCount; i++)
         if (memcmp(cells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
@@ -466,7 +470,7 @@ jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
 static int
 jailhouseDomainGetInfo(virDomainPtr domain, virDomainInfoPtr info)
 {
-    struct jailhouse_cell *cell = virDomainPtrToCell(domain);
+    virJailhouseCellPtr cell = virDomainPtrToCell(domain);
     if (cell == NULL)
         return -1;
     info->state = cellToVirDomainState(cell);
@@ -482,7 +486,7 @@ jailhouseDomainGetState(virDomainPtr domain, int *state,
                         int *reason ATTRIBUTE_UNUSED, unsigned int flags)
 {
     virCheckFlags(0, 0);
-    struct jailhouse_cell *cell = virDomainPtrToCell(domain);
+    virJailhouseCellPtr cell = virDomainPtrToCell(domain);
     if (cell == NULL)
         return -1;
     *state = cellToVirDomainState(cell);
@@ -492,7 +496,7 @@ jailhouseDomainGetState(virDomainPtr domain, int *state,
 static int
 jailhouseDomainShutdown(virDomainPtr domain)
 {
-    virCommandPtr cmd = virCommandNew(((struct jailhouse_driver *)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "shutdown");
     char buf[IDLENGTH+1];
@@ -513,7 +517,7 @@ jailhouseDomainShutdown(virDomainPtr domain)
 static int
 jailhouseDomainDestroy(virDomainPtr domain)
 {
-    virCommandPtr cmd = virCommandNew(((struct jailhouse_driver *)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "destroy");
     char buf[IDLENGTH+1];
@@ -530,7 +534,7 @@ jailhouseDomainDestroy(virDomainPtr domain)
 static int
 jailhouseDomainCreate(virDomainPtr domain)
 {
-    virCommandPtr cmd = virCommandNew(((struct jailhouse_driver *)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "start");
     char buf[IDLENGTH+1];
