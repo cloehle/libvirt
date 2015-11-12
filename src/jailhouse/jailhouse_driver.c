@@ -82,64 +82,64 @@ typedef struct virJailhouseDriver virJailhouseDriver;
 typedef virJailhouseDriver *virJailhouseDriverPtr;
 
 /*
- *  helper function that returns the number as an integer and sets i to be the first char after the number
- */
-static int
-charsToInt(char* chars, size_t *i)
-{
-    int result = 0;
-    while (chars[*i] != ',' && chars[*i] != '-' && chars[*i] != ' ') {
-        result *= 10;
-        result += chars[*i] - '0';
-        (*i)++;
-    }
-    return result;
-}
-
-/*
  *  Takes a string in the format of "jailhouse cell list" as input,
  *  allocates an int array in which every CPU is explicitly listed and saves a pointer in cpusptr
  */
 static size_t
-parseCPUs(char* output, int **cpusptr)
+parseCPUs(const char* output, int **cpusptr)
 {
-    size_t i;
-    size_t count = 1;
+    const char *current = output;
+    char *endptr;
+    size_t count = 0;
     int number;
+    int nextNumber;
     int* cpus;
-    if (output[0] == ' ') {
+    size_t i = 0;
+    if (*current == ' ') {
         *cpusptr = NULL;
         return 0;
     }
-    for (i = 0; i<CPULENGTH; i++) {
-        number = charsToInt(output, &i);
-        if (output[i] == ',') {
-            count++;
-        } else if (output[i] == '-') {
-            i++;
-            count += charsToInt(output, &i) - number;
-       }
+    while(current <= output+CPULENGTH && *current != ' ') {
+        if (virStrToLong_i(current, &endptr, 0, &number))
+            goto error;
+        current = endptr;
+        count++;
+        if (*current == '-') {
+            current++;
+            if (virStrToLong_i(current, &endptr, 0, &nextNumber))
+                goto error;
+            count += nextNumber - number;
+            current = endptr;
+        }
+        current++;
     }
     if (VIR_ALLOC_N(cpus, count)) {
         virReportError(VIR_ERR_INTERNAL_ERROR,
                     _("Failed to allocate CPUs array of size %zu"), count);
-        return 0;
-    }
-    size_t j = 0;
-    i = 0;
-    while (output[i] != ' ') {
-        number = charsToInt(output, &i);
-        if (output[i] == ',' || output[i] == ' ') {
-            cpus[j++] = number;
-        } else if (output[i] == '-') {
-            i++;
-            int nextNumber = charsToInt(output, &i);
-            for (; number <= nextNumber; number++) cpus[j++] = number;
+        goto error;
+    };
+    current = output;
+    while (i < count) {
+        if (virStrToLong_i(current, &endptr, 0, &number))
+            goto error;
+        current = endptr;
+        cpus[i++] = number;
+        if (*current == '-') {
+            current++;
+            if (virStrToLong_i(current, &endptr, 0, &nextNumber))
+                goto error;
+            current = endptr;
+            for (; number < nextNumber; number++)
+                cpus[i++] = number+1;
         }
-        i++;
+        current++;
     }
     *cpusptr = cpus;
     return count;
+    error:
+    VIR_FREE(cpus);
+    *cpusptr = NULL;
+    return 0;
 }
 
 /*
