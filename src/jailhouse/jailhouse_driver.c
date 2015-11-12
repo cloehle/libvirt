@@ -69,7 +69,7 @@ typedef virJailhouseCell *virJailhouseCellPtr;
 
 /*
  *  The driver requeries the cells on most calls, it stores the result of the
- *  last query, so it can copy the UUIDs in the new query if the cell is the 
+ *  last query, so it can copy the UUIDs in the new query if the cell is the
  *  same(otherwise it just generates a new one).
  *  not preserving the UUID results in a lot of bugs in libvirts clients.
  */
@@ -95,11 +95,11 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
     int nextNumber;
     int* cpus;
     size_t i = 0;
-    if (*current == ' ') {
+    if (*current == ' ') { // no CPUs assigned/failed, not an error
         *cpusptr = NULL;
         return 0;
     }
-    while(current <= output+CPULENGTH && *current != ' ') {
+    while (current <= output+CPULENGTH && *current != ' ') {
         if (virStrToLong_i(current, &endptr, 0, &number))
             goto error;
         current = endptr;
@@ -113,11 +113,8 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
         }
         current++;
     }
-    if (VIR_ALLOC_N(cpus, count)) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                    _("Failed to allocate CPUs array of size %zu"), count);
+    if (VIR_ALLOC_N(cpus, count))
         goto error;
-    };
     current = output;
     while (i < count) {
         if (virStrToLong_i(current, &endptr, 0, &number))
@@ -162,11 +159,8 @@ virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutpu
         if (output[i] == '\n') count++;
         i++;
     }
-    if (VIR_ALLOC_N(*parsedOutput, count)) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                  _("Failed to allocate virJailhouseCell array of size %zu"), count);
+    if (VIR_ALLOC_N(*parsedOutput, count))
         goto error;
-    }
     if (*parsedOutput == NULL)
         goto error;
     i = 0;
@@ -251,7 +245,8 @@ virJailhouseCellToDomainPtr(virConnectPtr conn,  virJailhouseCellPtr cell)
 /*
  *  Check cells for cell and copies UUID if found, otherwise generates a new one, this is to preserve UUID in libvirt
  */
-static void virJailhouseSetUUID(virJailhouseCellPtr cells, size_t count, virJailhouseCellPtr cell) {
+static void virJailhouseSetUUID(virJailhouseCellPtr cells, size_t count, virJailhouseCellPtr cell)
+{
     size_t i;
     for (i = 0; i < count; i++) {
         if (strncmp(cells[i].name, cell->name, NAMELENGTH+1))
@@ -400,11 +395,8 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
     virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     if (cellsCount == -1)
         goto error;
-    if (VIR_ALLOC_N(*domains, cellsCount+1)) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                    _("Failed to allocate virDomainPtr array of size %zu"), cellsCount+1);
+    if (VIR_ALLOC_N(*domains, cellsCount+1))
         goto error;
-    }
     size_t i;
     for (i = 0; i < cellsCount; i++)
         (*domains)[i] = virJailhouseCellToDomainPtr(conn, cells+i);
