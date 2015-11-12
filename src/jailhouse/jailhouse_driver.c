@@ -164,8 +164,6 @@ virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutpu
     }
     if (VIR_ALLOC_N(*parsedOutput, count))
         goto error;
-    if (*parsedOutput == NULL)
-        goto error;
     i = 0;
     while (output[i++] != '\n'); //  Skip table header line
     for (j = 0; j < count; j++) {
