@@ -141,7 +141,7 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
 
 /*
  *  calls "jailhouse cell list" and parses the output in an array of virJailhouseCell
- *  example output: 
+ *  example output:
  *  ID      Name                    State           Assigned CPUs           Failed CPUs
  *  0       QEMU-VM                 running         0-3
  */
@@ -265,10 +265,11 @@ static void virJailhouseSetUUID(virJailhouseCellPtr cells, size_t count, virJail
 static void
 virJailhouseGetCurrentCellList(virConnectPtr conn)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t count;
     size_t i;
-    size_t lastCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
-    virJailhouseCellPtr lastCells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    size_t lastCount = driver->lastQueryCellsCount;
+    virJailhouseCellPtr lastCells = driver->lastQueryCells;
     virJailhouseCellPtr cells = NULL;
     count = virJailhouseParseListOutput(conn, &cells);
     for (i = 0; i < count; i++)
@@ -278,8 +279,8 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
         VIR_FREE(lastCells[i].failedCPUs);
     }
     VIR_FREE(lastCells);
-    ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells = cells;
-    ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount = count;
+    driver->lastQueryCells = cells;
+    driver->lastQueryCellsCount = count;
 }
 
 /*
@@ -289,11 +290,12 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
 static virJailhouseCellPtr
 virDomainPtrToCell(virDomainPtr dom)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)dom->conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(dom->conn);
-    cellsCount = ((virJailhouseDriverPtr)dom->conn->privateData)->lastQueryCellsCount;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)dom->conn->privateData)->lastQueryCells;
+    cellsCount = driver->lastQueryCellsCount;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
         if (dom->id == cells[i].id)
                 return cells+i;
@@ -357,16 +359,18 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
 static int
 jailhouseConnectClose(virConnectPtr conn)
 {
+
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t i;
-    size_t cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    size_t cellsCount = driver->lastQueryCellsCount;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++) {
         VIR_FREE(cells[i].assignedCPUs);
         VIR_FREE(cells[i].failedCPUs);
     }
     VIR_FREE(cells);
-    VIR_FREE(((virJailhouseDriverPtr)conn->privateData)->binary);
-    VIR_FREE(conn->privateData);
+    VIR_FREE(driver->binary);
+    VIR_FREE(driver);
     conn->privateData = NULL;
     return 0;
 }
@@ -381,11 +385,12 @@ jailhouseConnectNumOfDomains(virConnectPtr conn)
 static int
 jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(conn);
-    cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    cellsCount = driver->lastQueryCellsCount;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < maxids && i < cellsCount; i++)
         ids[i] = cells[i].id;
     return i;
@@ -395,11 +400,12 @@ static int
 jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsigned int flags)
 {
     virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, 0);
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(conn);
-    cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    cellsCount = driver->lastQueryCellsCount;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     if (cellsCount == -1)
         goto error;
     if (VIR_ALLOC_N(*domains, cellsCount+1) < 0)
@@ -416,13 +422,14 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
 static virDomainPtr
 jailhouseDomainLookupByID(virConnectPtr conn, int id)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(conn);
-    cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
         if (cells[i].id == id)
             return virJailhouseCellToDomainPtr(conn, cells+i);
@@ -433,13 +440,14 @@ jailhouseDomainLookupByID(virConnectPtr conn, int id)
 static virDomainPtr
 jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(conn);
-    cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
         if (STREQ(cells[i].name, lookupName))
             return virJailhouseCellToDomainPtr(conn, cells+i);
@@ -450,13 +458,14 @@ jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
 static virDomainPtr
 jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
 {
+    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
     virJailhouseGetCurrentCellList(conn);
-    cellsCount = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
+    cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
-    virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
+    virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
         if (memcmp(cells[i].uuid, (const char*)uuid, VIR_UUID_BUFLEN) == 0)
             return virJailhouseCellToDomainPtr(conn, cells+i);
