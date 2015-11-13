@@ -34,6 +34,7 @@
 #include "virtypedparam.h"
 #include "virstring.h"
 #include "nodeinfo.h"
+#include "capabilities.h"
 
 #define VIR_FROM_THIS VIR_FROM_JAILHOUSE
 
@@ -576,10 +577,10 @@ jailhouseNodeGetInfo(virConnectPtr conn ATTRIBUTE_UNUSED, virNodeInfoPtr info)
 static char *
 jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
 {
-    char* caps;
-    if (VIR_STRDUP(caps, "<capabilities></capabilities>") != 1)
-        return NULL;
-    return caps;
+    virCapsPtr caps = virCapabilitiesNew(VIR_ARCH_NONE, false, false);
+    char* xml = virCapabilitiesFormatXML(caps);
+    virObjectUnref(caps);
+    return xml;
 }
 
 /*
