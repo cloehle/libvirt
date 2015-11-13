@@ -484,10 +484,10 @@ jailhouseDomainGetInfo(virDomainPtr domain, virDomainInfoPtr info)
     if (cell == NULL)
         return -1;
     info->state = virJailhouseCellToState(cell);
-    info->maxMem = 1;
-    info->memory = 1;
+    info->maxMem = 0;
+    info->memory = 0;
     info->nrVirtCpu = cell->assignedCPUsLength;
-    info->cpuTime = 1;
+    info->cpuTime = 0;
     return 0;
 }
 
