@@ -141,6 +141,9 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
 
 /*
  *  calls "jailhouse cell list" and parses the output in an array of virJailhouseCell
+ *  example output: 
+ *  ID      Name                    State           Assigned CPUs           Failed CPUs
+ *  0       QEMU-VM                 running         0-3
  */
 static size_t
 virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutput)
