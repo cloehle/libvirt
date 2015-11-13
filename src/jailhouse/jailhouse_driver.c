@@ -506,13 +506,11 @@ jailhouseDomainGetState(virDomainPtr domain, int *state,
 static int
 jailhouseDomainShutdown(virDomainPtr domain)
 {
-    char buf[IDLENGTH+1];
     int resultcode;
     virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "shutdown");
-    snprintf(buf, IDLENGTH+1, "%d", domain->id);
-    virCommandAddArg(cmd, buf);
+    virCommandAddArgFormat(cmd, "%d", domain->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
     virCommandFree(cmd);
@@ -528,13 +526,11 @@ jailhouseDomainShutdown(virDomainPtr domain)
 static int
 jailhouseDomainDestroy(virDomainPtr domain)
 {
-    char buf[IDLENGTH+1];
     int resultcode;
     virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "destroy");
-    snprintf(buf, IDLENGTH+1, "%d", domain->id);
-    virCommandAddArg(cmd, buf);
+    virCommandAddArgFormat(cmd, "%d", domain->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
     virCommandFree(cmd);
@@ -546,13 +542,11 @@ jailhouseDomainDestroy(virDomainPtr domain)
 static int
 jailhouseDomainCreate(virDomainPtr domain)
 {
-    char buf[IDLENGTH+1];
     int resultcode;
     virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "start");
-    snprintf(buf, IDLENGTH+1, "%d", domain->id);
-    virCommandAddArg(cmd, buf);
+    virCommandAddArgFormat(cmd, "%d", domain->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
     virCommandFree(cmd);
