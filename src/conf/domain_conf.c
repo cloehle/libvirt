@@ -13398,6 +13398,7 @@ void virDomainControllerInsertPreAlloced(virDomainDefPtr def,
     int idx;
     /* Tenatively plan to insert controller at the end. */
     int insertAt = -1;
+    virDomainControllerDefPtr current = NULL;
 
     /* Then work backwards looking for controllers of
      * the same type. If we find a controller with a
@@ -13405,17 +13406,27 @@ void virDomainControllerInsertPreAlloced(virDomainDefPtr def,
      * that position
      */
     for (idx = (def->ncontrollers - 1); idx >= 0; idx--) {
-        /* If bus matches and current controller is after
-         * new controller, then new controller should go here */
-        if (def->controllers[idx]->type == controller->type &&
-            def->controllers[idx]->idx > controller->idx) {
-            insertAt = idx;
-        } else if (def->controllers[idx]->type == controller->type &&
-                   insertAt == -1) {
-            /* Last controller with match bus is before the
-             * new controller, then put new controller just after
-             */
-            insertAt = idx + 1;
+        current = def->controllers[idx];
+        if (current->type == controller->type) {
+            if (current->idx > controller->idx) {
+                /* If bus matches and current controller is after
+                 * new controller, then new controller should go here
+                 * */
+                insertAt = idx;
+            } else if (controller->info.mastertype == VIR_DOMAIN_CONTROLLER_MASTER_NONE &&
+                       current->info.mastertype != VIR_DOMAIN_CONTROLLER_MASTER_NONE &&
+                       current->idx == controller->idx) {
+                /* If bus matches and index matches and new controller is
+                 * master and current isn't a master, then new controller
+                 * should go here to be placed before its companion
+                 */
+                insertAt = idx;
+            } else if (insertAt == -1) {
+                /* Last controller with match bus is before the
+                 * new controller, then put new controller just after
+                 */
+                insertAt = idx + 1;
+            }
         }
     }
 

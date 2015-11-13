@@ -1476,17 +1476,23 @@ qemuDomainObjBeginJobInternal(virQEMUDriverPtr driver,
     unsigned long long now;
     unsigned long long then;
     bool nested = job == QEMU_JOB_ASYNC_NESTED;
+    bool async = job == QEMU_JOB_ASYNC;
     virQEMUDriverConfigPtr cfg = virQEMUDriverGetConfig(driver);
     const char *blocker = NULL;
     int ret = -1;
     unsigned long long duration = 0;
     unsigned long long asyncDuration = 0;
+    const char *jobStr;
 
-    VIR_DEBUG("Starting %s: %s (async=%s vm=%p name=%s)",
-              job == QEMU_JOB_ASYNC ? "async job" : "job",
-              qemuDomainJobTypeToString(job),
-              qemuDomainAsyncJobTypeToString(priv->job.asyncJob),
-              obj, obj->def->name);
+    if (async)
+        jobStr = qemuDomainAsyncJobTypeToString(asyncJob);
+    else
+        jobStr = qemuDomainJobTypeToString(job);
+
+    VIR_DEBUG("Starting %s: %s (vm=%p name=%s, current job=%s async=%s)",
+              async ? "async job" : "job", jobStr, obj, obj->def->name,
+              qemuDomainJobTypeToString(priv->job.active),
+              qemuDomainAsyncJobTypeToString(priv->job.asyncJob));
 
     if (virTimeMillisNow(&now) < 0) {
         virObjectUnref(cfg);
@@ -3633,14 +3639,33 @@ qemuDomainGetMlockLimitBytes(virDomainDefPtr def)
 {
     unsigned long long memKB;
 
-    /* VFIO requires all of the guest's memory to be locked resident, plus some
-     * amount for IO space. Alex Williamson suggested adding 1GiB for IO space
-     * just to be safe (some finer tuning might be nice, though). */
-    if (virMemoryLimitIsSet(def->mem.hard_limit))
+    /* prefer the hard limit */
+    if (virMemoryLimitIsSet(def->mem.hard_limit)) {
         memKB = def->mem.hard_limit;
-    else
-        memKB = virDomainDefGetMemoryActual(def) + 1024 * 1024;
+        goto done;
+    }
 
+    /* For device passthrough using VFIO the guest memory and MMIO memory
+     * regions need to be locked persistent in order to allow DMA.
+     *
+     * Currently the below limit is based on assumptions about the x86 platform.
+     *
+     * The chosen value of 1GiB below originates from x86 systems where it was
+     * used as space reserved for the MMIO region for the whole system.
+     *
+     * On x86_64 systems the MMIO regions of the IOMMU mapped devices don't
+     * count towards the locked memory limit since the memory is owned by the
+     * device. Emulated devices though do count, but the regions are usually
+     * small. Although it's not guaranteed that the limit will be enough for all
+     * configurations it didn't pose a problem for now.
+     *
+     * http://www.redhat.com/archives/libvir-list/2015-November/msg00329.html
+     *
+     * Note that this may not be valid for all platforms.
+     */
+    memKB = virDomainDefGetMemoryActual(def) + 1024 * 1024;
+
+ done:
     return memKB << 10;
 }
 
