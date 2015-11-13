@@ -35,6 +35,7 @@
 #include "virstring.h"
 #include "nodeinfo.h"
 #include "capabilities.h"
+#include "domain_conf.h"
 
 #define VIR_FROM_THIS VIR_FROM_JAILHOUSE
 
@@ -583,24 +584,15 @@ jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
     return xml;
 }
 
-/*
- *  Returns a dummy XML for virt-manager
- */
 static char *
 jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
 {
     virCheckFlags(0, NULL);
-    char buf[200];
-    char uuid[VIR_UUID_STRING_BUFLEN];
-    char* result;
-    virDomainGetUUIDString(domain, uuid);
-    snprintf(buf, 200, "<domain type =\"jailhouse\">\n\
-            <name>%s</name>\n\
-            <uuid>%s</uuid>\n\
-            </domain>", domain->name, uuid);
-    if (VIR_STRDUP(result, buf) != 1)
-        return NULL;
-    return result;
+    char* xml;
+    virDomainDefPtr domainDef = virDomainDefNewFull(domain->name, domain->uuid, domain->id);
+    xml = virDomainDefFormat(domainDef, 0);
+    virObjectUnref(domainDef);
+    return xml;
 }
 
 static virHypervisorDriver jailhouseHypervisorDriver = {
