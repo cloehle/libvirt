@@ -113,7 +113,7 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
         }
         current++;
     }
-    if (VIR_ALLOC_N(cpus, count))
+    if (VIR_ALLOC_N(cpus, count) < 0)
         goto error;
     current = output;
     while (i < count) {
@@ -165,7 +165,7 @@ virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutpu
         if (output[i] == '\n') count++;
         i++;
     }
-    if (VIR_ALLOC_N(*parsedOutput, count))
+    if (VIR_ALLOC_N(*parsedOutput, count) < 0)
         goto error;
     i = 0;
     while (output[i++] != '\n'); //  Skip table header line
@@ -341,7 +341,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     VIR_FREE(output);
     virCommandFree(cmd);
     virJailhouseDriverPtr driver;
-    if (VIR_ALLOC(driver))
+    if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
     driver->binary = binary;
     driver->lastQueryCells = NULL;
@@ -402,7 +402,7 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
     virJailhouseCellPtr cells = ((virJailhouseDriverPtr)conn->privateData)->lastQueryCells;
     if (cellsCount == -1)
         goto error;
-    if (VIR_ALLOC_N(*domains, cellsCount+1))
+    if (VIR_ALLOC_N(*domains, cellsCount+1) < 0)
         goto error;
     for (i = 0; i < cellsCount; i++)
         (*domains)[i] = virJailhouseCellToDomainPtr(conn, cells+i);
