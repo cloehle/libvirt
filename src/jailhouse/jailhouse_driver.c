@@ -147,13 +147,13 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
  *  ID      Name                    State           Assigned CPUs           Failed CPUs
  *  0       QEMU-VM                 running         0-3
  */
-static size_t
+static ssize_t
 virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutput)
 {
-    char *output;
-    size_t count = -1; //  Don't count table header line
+    char *output = NULL;
+    ssize_t count = -1; //  Don't count table header line
     size_t i = 0;
-    size_t j;
+    ssize_t j;
     size_t k;
     char c;
     virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)conn->privateData)->binary);
@@ -162,13 +162,17 @@ virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutpu
     virCommandAddEnvPassCommon(cmd);
     virCommandSetOutputBuffer(cmd, &output);
     if (virCommandRun(cmd, NULL) < 0)
-        goto error;
+        goto cleanup;
     while (output[i] != '\0') {
         if (output[i] == '\n') count++;
         i++;
     }
-    if (VIR_ALLOC_N(*parsedOutput, count) < 0)
+    if (count < 1)
         goto error;
+    if (VIR_ALLOC_N(*parsedOutput, count) < 0) {
+        count = -1;
+        goto error;
+    }
     i = 0;
     while (output[i++] != '\n'); //  Skip table header line
     for (j = 0; j < count; j++) {
@@ -204,20 +208,19 @@ virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutpu
         i += CPULENGTH;
         i++; // skip \n
     }
-    VIR_FREE(output);
-    virCommandFree(cmd);
-    return count;
+    goto cleanup;
     error:
-    for (i = 0; i < count; i++) {
-        VIR_FREE((*parsedOutput)[i].assignedCPUs);
-        VIR_FREE((*parsedOutput)[i].failedCPUs);
+    for (j = 0; j < count; j++) {
+        VIR_FREE((*parsedOutput)[j].assignedCPUs);
+        VIR_FREE((*parsedOutput)[j].failedCPUs);
     }
     VIR_FREE(*parsedOutput);
     *parsedOutput = NULL;
+    count = -1;
+    cleanup:
     VIR_FREE(output);
-    output = NULL;
     virCommandFree(cmd);
-    return -1;
+    return count;
 }
 
 /*
@@ -268,12 +271,14 @@ static void
 virJailhouseGetCurrentCellList(virConnectPtr conn)
 {
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
-    size_t count;
+    ssize_t count;
     size_t i;
     size_t lastCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr lastCells = driver->lastQueryCells;
     virJailhouseCellPtr cells = NULL;
     count = virJailhouseParseListOutput(conn, &cells);
+    if (count == -1)
+        count = 0;
     for (i = 0; i < count; i++)
         virJailhouseSetUUID(lastCells, lastCount, cells+i);
     for (i = 0; i < lastCount; i++) {
