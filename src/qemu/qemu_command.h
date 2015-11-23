@@ -78,8 +78,7 @@ virCommandPtr qemuBuildCommandLine(virConnectPtr conn,
                                    virDomainChrSourceDefPtr monitor_chr,
                                    bool monitor_json,
                                    virQEMUCapsPtr qemuCaps,
-                                   const char *migrateFrom,
-                                   int migrateFd,
+                                   const char *migrateURI,
                                    virDomainSnapshotObjPtr current_snapshot,
                                    virNetDevVPortProfileOp vmop,
                                    qemuBuildCommandLineCallbacksPtr callbacks,
@@ -88,7 +87,7 @@ virCommandPtr qemuBuildCommandLine(virConnectPtr conn,
                                    virBitmapPtr nodeset,
                                    size_t *nnicindexes,
                                    int **nicindexes)
-    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(11);
+    ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(10);
 
 /* Generate '-device' string for chardev device */
 int
@@ -173,9 +172,7 @@ int qemuBuildMemoryBackendStr(unsigned long long size,
                               virJSONValuePtr *backendProps,
                               bool force);
 
-char *qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem,
-                               virDomainDefPtr def,
-                               virQEMUCapsPtr qemuCaps);
+char *qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem);
 
 /* Legacy, pre device support */
 char *qemuBuildPCIHostdevPCIDevStr(virDomainHostdevDefPtr dev,
@@ -322,4 +319,5 @@ bool qemuCheckCCWS390AddressSupport(virDomainDefPtr def,
                                     virDomainDeviceInfo info,
                                     virQEMUCapsPtr qemuCaps,
                                     const char *devicename);
+
 #endif /* __QEMU_COMMAND_H__*/

@@ -73,6 +73,7 @@ VIR_ENUM_IMPL(qemuDomainAsyncJob, QEMU_ASYNC_JOB_LAST,
               "save",
               "dump",
               "snapshot",
+              "start",
 );
 
 
@@ -88,6 +89,7 @@ qemuDomainAsyncJobPhaseToString(qemuDomainAsyncJob job,
     case QEMU_ASYNC_JOB_SAVE:
     case QEMU_ASYNC_JOB_DUMP:
     case QEMU_ASYNC_JOB_SNAPSHOT:
+    case QEMU_ASYNC_JOB_START:
     case QEMU_ASYNC_JOB_NONE:
     case QEMU_ASYNC_JOB_LAST:
         ; /* fall through */
@@ -111,6 +113,7 @@ qemuDomainAsyncJobPhaseFromString(qemuDomainAsyncJob job,
     case QEMU_ASYNC_JOB_SAVE:
     case QEMU_ASYNC_JOB_DUMP:
     case QEMU_ASYNC_JOB_SNAPSHOT:
+    case QEMU_ASYNC_JOB_START:
     case QEMU_ASYNC_JOB_NONE:
     case QEMU_ASYNC_JOB_LAST:
         ; /* fall through */
@@ -1345,14 +1348,6 @@ qemuDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
         } else {
             dev->data.video->vgamem = QEMU_QXL_VGAMEM_DEFAULT;
         }
-    }
-
-    if (dev->type == VIR_DOMAIN_DEVICE_MEMORY &&
-        !virDomainDefHasMemoryHotplug(def)) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("maxMemory has to be specified when using memory "
-                         "devices "));
-        goto cleanup;
     }
 
     ret = 0;
@@ -3558,6 +3553,187 @@ qemuDomainMachineIsS390CCW(const virDomainDef *def)
 }
 
 
+static bool
+qemuCheckMemoryDimmConflict(const virDomainDef *def,
+                            const virDomainMemoryDef *mem)
+{
+    size_t i;
+
+    for (i = 0; i < def->nmems; i++) {
+         virDomainMemoryDefPtr tmp = def->mems[i];
+
+         if (tmp == mem ||
+             tmp->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM)
+             continue;
+
+         if (mem->info.addr.dimm.slot == tmp->info.addr.dimm.slot) {
+             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                            _("memory device slot '%u' is already being "
+                              "used by another memory device"),
+                            mem->info.addr.dimm.slot);
+             return true;
+         }
+
+         if (mem->info.addr.dimm.base != 0 &&
+             mem->info.addr.dimm.base == tmp->info.addr.dimm.base) {
+             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                            _("memory device base '0x%llx' is already being "
+                              "used by another memory device"),
+                            mem->info.addr.dimm.base);
+             return true;
+         }
+    }
+
+    return false;
+}
+static int
+qemuDomainDefValidateMemoryHotplugDevice(const virDomainMemoryDef *mem,
+                                         const virDomainDef *def)
+{
+    switch ((virDomainMemoryModel) mem->model) {
+    case VIR_DOMAIN_MEMORY_MODEL_DIMM:
+        if (mem->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM &&
+            mem->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("only 'dimm' addresses are supported for the "
+                             "pc-dimm device"));
+            return -1;
+        }
+
+        if (virDomainNumaGetNodeCount(def->numa) != 0) {
+            if (mem->targetNode == -1) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                               _("target NUMA node needs to be specifed for "
+                                 "memory device"));
+                return -1;
+            }
+        }
+
+        if (mem->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM) {
+            if (mem->info.addr.dimm.slot >= def->mem.memory_slots) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               _("memory device slot '%u' exceeds slots "
+                                 "count '%u'"),
+                               mem->info.addr.dimm.slot, def->mem.memory_slots);
+                return -1;
+            }
+
+
+            if (qemuCheckMemoryDimmConflict(def, mem))
+                return -1;
+        }
+        break;
+
+    case VIR_DOMAIN_MEMORY_MODEL_NONE:
+    case VIR_DOMAIN_MEMORY_MODEL_LAST:
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("invalid memory device type"));
+        return -1;
+    }
+
+    return 0;
+}
+
+
+/**
+ * qemuDomainDefValidateMemoryHotplug:
+ * @def: domain definition
+ * @qemuCaps: qemu capabilities object
+ * @mem: definition of memory device that is to be added to @def with hotplug,
+ *       NULL in case of regular VM startup
+ *
+ * Validates that the domain definition and memory modules have valid
+ * configuration and are possibly able to accept @mem via hotplug if it's
+ * non-NULL.
+ *
+ * Returns 0 on success; -1 and a libvirt error on error.
+ */
+int
+qemuDomainDefValidateMemoryHotplug(const virDomainDef *def,
+                                   virQEMUCapsPtr qemuCaps,
+                                   const virDomainMemoryDef *mem)
+{
+    unsigned int nmems = def->nmems;
+    unsigned long long hotplugSpace;
+    unsigned long long hotplugMemory = 0;
+    size_t i;
+
+    hotplugSpace = def->mem.max_memory - virDomainDefGetMemoryInitial(def);
+
+    if (mem) {
+        nmems++;
+        hotplugMemory = mem->size;
+
+        if (qemuDomainDefValidateMemoryHotplugDevice(mem, def) < 0)
+            return -1;
+    }
+
+    if (!virDomainDefHasMemoryHotplug(def)) {
+        if (nmems) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("cannot use/hotplug a memory device when domain "
+                             "'maxMemory' is not defined"));
+            return -1;
+        }
+
+        return 0;
+    }
+
+    if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_PC_DIMM)) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("memory hotplug isn't supported by this QEMU binary"));
+        return -1;
+    }
+
+    if (!ARCH_IS_PPC64(def->os.arch)) {
+        /* due to guest support, qemu would silently enable NUMA with one node
+         * once the memory hotplug backend is enabled. To avoid possible
+         * confusion we will enforce user originated numa configuration along
+         * with memory hotplug. */
+        if (virDomainNumaGetNodeCount(def->numa) == 0) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("At least one numa node has to be configured when "
+                             "enabling memory hotplug"));
+            return -1;
+        }
+    }
+
+    if (nmems > def->mem.memory_slots) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("memory device count '%u' exceeds slots count '%u'"),
+                       nmems, def->mem.memory_slots);
+        return -1;
+    }
+
+    for (i = 0; i < def->nmems; i++) {
+        hotplugMemory += def->mems[i]->size;
+
+        /* already existing devices don't need to be checked on hotplug */
+        if (!mem &&
+            qemuDomainDefValidateMemoryHotplugDevice(def->mems[i], def) < 0)
+            return -1;
+    }
+
+    if (hotplugMemory > hotplugSpace) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("memory device total size exceeds hotplug space"));
+        return -1;
+    }
+
+    return 0;
+}
+
+
+bool
+qemuDomainMachineHasBuiltinIDE(const virDomainDef *def)
+{
+    return qemuDomainMachineIsI440FX(def) ||
+        STREQ(def->os.machine, "malta") ||
+        STREQ(def->os.machine, "sun4u") ||
+        STREQ(def->os.machine, "g3beige");
+}
+
+
 /**
  * qemuDomainUpdateCurrentMemorySize:
  *
@@ -3630,7 +3806,7 @@ qemuDomainUpdateCurrentMemorySize(virQEMUDriverPtr driver,
  * @def: domain definition
  *
  * Returns the size of the memory in bytes that needs to be set as
- * RLIMIT_MEMLOCK for purpose of VFIO device passthrough.
+ * RLIMIT_MEMLOCK for the QEMU process.
  * If a mem.hard_limit is set, then that value is preferred; otherwise, the
  * value returned may depend upon the architecture or devices present.
  */
@@ -3642,6 +3818,84 @@ qemuDomainGetMlockLimitBytes(virDomainDefPtr def)
     /* prefer the hard limit */
     if (virMemoryLimitIsSet(def->mem.hard_limit)) {
         memKB = def->mem.hard_limit;
+        goto done;
+    }
+
+    if (ARCH_IS_PPC64(def->os.arch)) {
+        unsigned long long maxMemory;
+        unsigned long long memory;
+        unsigned long long baseLimit;
+        unsigned long long passthroughLimit;
+        size_t nPCIHostBridges;
+        size_t i;
+        bool usesVFIO = false;
+
+        /* TODO: Detect at runtime once we start using more than just
+         *       the default PCI Host Bridge */
+        nPCIHostBridges = 1;
+
+        for (i = 0; i < def->nhostdevs; i++) {
+            virDomainHostdevDefPtr dev = def->hostdevs[i];
+
+            if (dev->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS &&
+                dev->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI &&
+                dev->source.subsys.u.pci.backend == VIR_DOMAIN_HOSTDEV_PCI_BACKEND_VFIO) {
+                usesVFIO = true;
+                break;
+            }
+        }
+
+        memory = virDomainDefGetMemoryActual(def);
+
+        if (def->mem.max_memory)
+            maxMemory = def->mem.max_memory;
+        else
+            maxMemory = memory;
+
+        /* baseLimit := maxMemory / 128                                  (a)
+         *              + 4 MiB * #PHBs + 8 MiB                          (b)
+         *
+         * (a) is the hash table
+         *
+         * (b) is accounting for the 32-bit DMA window - it could be either the
+         * KVM accelerated TCE tables for emulated devices, or the VFIO
+         * userspace view. The 4 MiB per-PHB (including the default one) covers
+         * a 2GiB DMA window: default is 1GiB, but it's possible it'll be
+         * increased to help performance. The 8 MiB extra should be plenty for
+         * the TCE table index for any reasonable number of PHBs and several
+         * spapr-vlan or spapr-vscsi devices (512kB + a tiny bit each) */
+        baseLimit = maxMemory / 128 +
+                    4096 * nPCIHostBridges +
+                    8192;
+
+        /* passthroughLimit := max( 2 GiB * #PHBs,                       (c)
+         *                          memory                               (d)
+         *                          + memory * 1/512 * #PHBs + 8 MiB )   (e)
+         *
+         * (c) is the pre-DDW VFIO DMA window accounting. We're allowing 2 GiB
+         * rather than 1 GiB
+         *
+         * (d) is the with-DDW (and memory pre-registration and related
+         * features) DMA window accounting - assuming that we only account RAM
+         * once, even if mapped to multiple PHBs
+         *
+         * (e) is the with-DDW userspace view and overhead for the 64-bit DMA
+         * window. This is based a bit on expected guest behaviour, but there
+         * really isn't a way to completely avoid that. We assume the guest
+         * requests a 64-bit DMA window (per PHB) just big enough to map all
+         * its RAM. 4 kiB page size gives the 1/512; it will be less with 64
+         * kiB pages, less still if the guest is mapped with hugepages (unlike
+         * the default 32-bit DMA window, DDW windows can use large IOMMU
+         * pages). 8 MiB is for second and further level overheads, like (b) */
+        passthroughLimit = MAX(2 * 1024 * 1024 * nPCIHostBridges,
+                               memory +
+                               memory / 512 * nPCIHostBridges + 8192);
+
+        if (usesVFIO)
+            memKB = baseLimit + passthroughLimit;
+        else
+            memKB = baseLimit;
+
         goto done;
     }
 
@@ -3673,8 +3927,9 @@ qemuDomainGetMlockLimitBytes(virDomainDefPtr def)
 /**
  * @def: domain definition
  *
- * Returns ture if the locked memory limit needs to be set or updated due to
- * configuration or passthrough devices.
+ * Returns true if the locked memory limit needs to be set or updated because
+ * of domain configuration, VFIO passthrough devices or architecture-specific
+ * requirements.
  * */
 bool
 qemuDomainRequiresMlock(virDomainDefPtr def)
@@ -3682,6 +3937,10 @@ qemuDomainRequiresMlock(virDomainDefPtr def)
     size_t i;
 
     if (def->mem.locked)
+        return true;
+
+    /* ppc64 domains need to lock some memory even when VFIO is not used */
+    if (ARCH_IS_PPC64(def->os.arch))
         return true;
 
     for (i = 0; i < def->nhostdevs; i++) {

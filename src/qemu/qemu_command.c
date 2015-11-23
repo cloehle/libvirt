@@ -1054,11 +1054,12 @@ qemuAssignDeviceControllerAlias(virDomainDefPtr domainDef,
          */
         return virAsprintf(&controller->info.alias, "pci.%d", controller->idx);
     } else if (controller->type == VIR_DOMAIN_CONTROLLER_TYPE_IDE) {
-        /* for any machine based on I440FX, the first (and currently
-         * only) IDE controller is an integrated controller hardcoded
-         * with id "ide"
+        /* for any machine based on e.g. I440FX or G3Beige, the
+         * first (and currently only) IDE controller is an integrated
+         * controller hardcoded with id "ide"
          */
-        if (qemuDomainMachineIsI440FX(domainDef) && controller->idx == 0)
+        if (qemuDomainMachineHasBuiltinIDE(domainDef) &&
+            controller->idx == 0)
             return VIR_STRDUP(controller->info.alias, "ide");
     } else if (controller->type == VIR_DOMAIN_CONTROLLER_TYPE_SATA) {
         /* for any Q35 machine, the first SATA controller is the
@@ -4914,14 +4915,15 @@ qemuBuildControllerDevStr(virDomainDefPtr domainDef,
         break;
 
     case VIR_DOMAIN_CONTROLLER_TYPE_IDE:
-        /* Since we currently only support the integrated IDE controller
-         * on 440fx, if we ever get to here, it's because some other
-         * machinetype had an IDE controller specified, or a 440fx had
-         * multiple ide controllers.
+        /* Since we currently only support the integrated IDE
+         * controller on various boards, if we ever get to here, it's
+         * because some other machinetype had an IDE controller
+         * specified, or one with a single IDE contraller had multiple
+         * ide controllers specified.
          */
-        if (qemuDomainMachineIsI440FX(domainDef))
+        if (qemuDomainMachineHasBuiltinIDE(domainDef))
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                           _("Only a single IDE controller is unsupported "
+                           _("Only a single IDE controller is supported "
                              "for this machine type"));
         else
             virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -4965,7 +4967,8 @@ qemuBuildControllerDevStr(virDomainDefPtr domainDef,
  * qemuBuildMemoryBackendStr:
  * @size: size of the memory device in kibibytes
  * @pagesize: size of the requested memory page in KiB, 0 for default
- * @guestNode: NUMA node in the guest that the memory object will be attached to
+ * @guestNode: NUMA node in the guest that the memory object will be attached
+ *             to, or -1 if NUMA is not used in the guest
  * @hostNodes: map of host nodes to alloc the memory in, NULL for default
  * @autoNodeset: fallback nodeset in case of automatic numa placement
  * @def: domain definition object
@@ -5011,19 +5014,19 @@ qemuBuildMemoryBackendStr(unsigned long long size,
     *backendProps = NULL;
     *backendType = NULL;
 
-    /* memory devices could provide a invalid guest node */
-    if (guestNode >= virDomainNumaGetNodeCount(def->numa)) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                       _("can't add memory backend for guest node '%d' as "
-                         "the guest has only '%zu' NUMA nodes configured"),
-                       guestNode, virDomainNumaGetNodeCount(def->numa));
-        return -1;
+    if (guestNode >= 0) {
+        /* memory devices could provide a invalid guest node */
+        if (guestNode >= virDomainNumaGetNodeCount(def->numa)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                           _("can't add memory backend for guest node '%d' as "
+                             "the guest has only '%zu' NUMA nodes configured"),
+                           guestNode, virDomainNumaGetNodeCount(def->numa));
+            return -1;
+        }
+
+        memAccess = virDomainNumaGetNodeMemoryAccessMode(def->numa, guestNode);
     }
 
-    if (!(props = virJSONValueNewObject()))
-        return -1;
-
-    memAccess = virDomainNumaGetNodeMemoryAccessMode(def->numa, guestNode);
     if (virDomainNumatuneGetMode(def->numa, guestNode, &mode) < 0 &&
         virDomainNumatuneGetMode(def->numa, -1, &mode) < 0)
         mode = VIR_DOMAIN_NUMATUNE_MEM_STRICT;
@@ -5039,6 +5042,10 @@ qemuBuildMemoryBackendStr(unsigned long long size,
                 master_hugepage = hugepage;
                 continue;
             }
+
+            /* just find the master hugepage in case we don't use NUMA */
+            if (guestNode < 0)
+                continue;
 
             if (virBitmapGetBit(hugepage->nodemask, guestNode,
                                 &thisHugepage) < 0) {
@@ -5072,6 +5079,9 @@ qemuBuildMemoryBackendStr(unsigned long long size,
         pagesize = 0;
         hugepage = NULL;
     }
+
+    if (!(props = virJSONValueNewObject()))
+        return -1;
 
     if (pagesize || hugepage) {
         if (pagesize) {
@@ -5264,44 +5274,8 @@ qemuBuildMemoryDimmBackendStr(virDomainMemoryDefPtr mem,
 }
 
 
-static bool
-qemuCheckMemoryDimmConflict(virDomainDefPtr def,
-                            virDomainMemoryDefPtr mem)
-{
-    size_t i;
-
-    for (i = 0; i < def->nmems; i++) {
-         virDomainMemoryDefPtr tmp = def->mems[i];
-
-         if (tmp == mem ||
-             tmp->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM)
-             continue;
-
-         if (mem->info.addr.dimm.slot == tmp->info.addr.dimm.slot) {
-             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                            _("memory device slot '%u' is already being "
-                              "used by another memory device"),
-                            mem->info.addr.dimm.slot);
-             return true;
-         }
-
-         if (mem->info.addr.dimm.base != 0 &&
-             mem->info.addr.dimm.base == tmp->info.addr.dimm.base) {
-             virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                            _("memory device base '0x%llx' is already being "
-                              "used by another memory device"),
-                            mem->info.addr.dimm.base);
-             return true;
-         }
-    }
-
-    return false;
-}
-
 char *
-qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem,
-                         virDomainDefPtr def,
-                         virQEMUCapsPtr qemuCaps)
+qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem)
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
 
@@ -5313,35 +5287,15 @@ qemuBuildMemoryDeviceStr(virDomainMemoryDefPtr mem,
 
     switch ((virDomainMemoryModel) mem->model) {
     case VIR_DOMAIN_MEMORY_MODEL_DIMM:
-        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_PC_DIMM)) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                           _("this qemu doesn't support the pc-dimm device"));
-            return NULL;
-        }
+        virBufferAddLit(&buf, "pc-dimm,");
 
-        if (mem->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM &&
-            mem->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                           _("only 'dimm' addresses are supported for the "
-                             "pc-dimm device"));
-            return NULL;
-        }
+        if (mem->targetNode >= 0)
+            virBufferAsprintf(&buf, "node=%d,", mem->targetNode);
 
-        if (mem->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM &&
-            mem->info.addr.dimm.slot >= def->mem.memory_slots) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                           _("memory device slot '%u' exceeds slots count '%u'"),
-                           mem->info.addr.dimm.slot, def->mem.memory_slots);
-            return NULL;
-        }
-
-        virBufferAsprintf(&buf, "pc-dimm,node=%d,memdev=mem%s,id=%s",
-                          mem->targetNode, mem->info.alias, mem->info.alias);
+        virBufferAsprintf(&buf, "memdev=mem%s,id=%s",
+                          mem->info.alias, mem->info.alias);
 
         if (mem->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_DIMM) {
-            if (qemuCheckMemoryDimmConflict(def, mem))
-                return NULL;
-
             virBufferAsprintf(&buf, ",slot=%d", mem->info.addr.dimm.slot);
             virBufferAsprintf(&buf, ",addr=%llu", mem->info.addr.dimm.base);
         }
@@ -9155,8 +9109,7 @@ qemuBuildCommandLine(virConnectPtr conn,
                      virDomainChrSourceDefPtr monitor_chr,
                      bool monitor_json,
                      virQEMUCapsPtr qemuCaps,
-                     const char *migrateFrom,
-                     int migrateFd,
+                     const char *migrateURI,
                      virDomainSnapshotObjPtr snapshot,
                      virNetDevVPortProfileOp vmop,
                      qemuBuildCommandLineCallbacksPtr callbacks,
@@ -9183,7 +9136,6 @@ qemuBuildCommandLine(virConnectPtr conn,
     int usbcontroller = 0;
     int actualSerials = 0;
     bool usblegacy = false;
-    bool mlock = false;
     int contOrder[] = {
         /*
          * List of controller types that we add commandline args for,
@@ -9217,10 +9169,9 @@ qemuBuildCommandLine(virConnectPtr conn,
     int bootCD = 0, bootFloppy = 0, bootDisk = 0;
 
     VIR_DEBUG("conn=%p driver=%p def=%p mon=%p json=%d "
-              "qemuCaps=%p migrateFrom=%s migrateFD=%d "
-              "snapshot=%p vmop=%d",
+              "qemuCaps=%p migrateURI=%s snapshot=%p vmop=%d",
               conn, driver, def, monitor_chr, monitor_json,
-              qemuCaps, migrateFrom, migrateFd, snapshot, vmop);
+              qemuCaps, migrateURI, snapshot, vmop);
 
     virUUIDFormat(def->uuid, uuid);
 
@@ -9299,7 +9250,7 @@ qemuBuildCommandLine(virConnectPtr conn,
         goto error;
 
     if (qemuBuildCpuArgStr(driver, def, emulator, qemuCaps,
-                           hostarch, &cpu, &hasHwVirt, !!migrateFrom) < 0)
+                           hostarch, &cpu, &hasHwVirt, !!migrateURI) < 0)
         goto error;
 
     if (cpu) {
@@ -9314,30 +9265,16 @@ qemuBuildCommandLine(virConnectPtr conn,
     if (qemuBuildDomainLoaderCommandLine(cmd, def, qemuCaps) < 0)
         goto error;
 
-    if (!migrateFrom && !snapshot &&
+    if (!migrateURI && !snapshot &&
         qemuDomainAlignMemorySizes(def) < 0)
+        goto error;
+
+    if (qemuDomainDefValidateMemoryHotplug(def, qemuCaps, NULL) < 0)
         goto error;
 
     virCommandAddArg(cmd, "-m");
 
     if (virDomainDefHasMemoryHotplug(def)) {
-        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_PC_DIMM)) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                           _("memory hotplug isn't supported by this QEMU binary"));
-            goto error;
-        }
-
-        /* due to guest support, qemu would silently enable NUMA with one node
-         * once the memory hotplug backend is enabled. To avoid possible
-         * confusion we will enforce user originated numa configuration along
-         * with memory hotplug. */
-        if (virDomainNumaGetNodeCount(def->numa) == 0) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                           _("At least one numa node has to be configured when "
-                             "enabling memory hotplug"));
-            goto error;
-        }
-
         /* Use the 'k' suffix to let qemu handle the units */
         virCommandAddArgFormat(cmd, "size=%lluk,slots=%u,maxmem=%lluk",
                                virDomainDefGetMemoryInitial(def),
@@ -9366,7 +9303,6 @@ qemuBuildCommandLine(virConnectPtr conn,
         virCommandAddArgFormat(cmd, "mlock=%s",
                                def->mem.locked ? "on" : "off");
     }
-    mlock = def->mem.locked;
 
     virCommandAddArg(cmd, "-smp");
     if (!(smp = qemuBuildSmpArgStr(def, qemuCaps)))
@@ -9393,38 +9329,31 @@ qemuBuildCommandLine(virConnectPtr conn,
         }
     }
 
-    if (virDomainNumaGetNodeCount(def->numa)) {
-        if (qemuBuildNumaArgStr(cfg, def, cmd, qemuCaps, nodeset) < 0)
+    if (virDomainNumaGetNodeCount(def->numa) &&
+        qemuBuildNumaArgStr(cfg, def, cmd, qemuCaps, nodeset) < 0)
             goto error;
 
-        /* memory hotplug requires NUMA to be enabled - we already checked
-         * that memory devices are present only when NUMA is */
+    /* memory hotplug requires NUMA to be enabled - we already checked
+     * that memory devices are present only when NUMA is */
 
-        if (def->nmems > def->mem.memory_slots) {
-            virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                           _("memory device count '%zu' exceeds slots count '%u'"),
-                           def->nmems, def->mem.memory_slots);
+
+    for (i = 0; i < def->nmems; i++) {
+        char *backStr;
+        char *dimmStr;
+
+        if (!(backStr = qemuBuildMemoryDimmBackendStr(def->mems[i], def,
+                                                      qemuCaps, cfg)))
             goto error;
-        }
 
-        for (i = 0; i < def->nmems; i++) {
-            char *backStr;
-            char *dimmStr;
-
-            if (!(backStr = qemuBuildMemoryDimmBackendStr(def->mems[i], def,
-                                                          qemuCaps, cfg)))
-                goto error;
-
-            if (!(dimmStr = qemuBuildMemoryDeviceStr(def->mems[i], def, qemuCaps))) {
-                VIR_FREE(backStr);
-                goto error;
-            }
-
-            virCommandAddArgList(cmd, "-object", backStr, "-device", dimmStr, NULL);
-
+        if (!(dimmStr = qemuBuildMemoryDeviceStr(def->mems[i]))) {
             VIR_FREE(backStr);
-            VIR_FREE(dimmStr);
+            goto error;
         }
+
+        virCommandAddArgList(cmd, "-object", backStr, "-device", dimmStr, NULL);
+
+        VIR_FREE(backStr);
+        VIR_FREE(dimmStr);
     }
 
     virCommandAddArgList(cmd, "-uuid", uuid, NULL);
@@ -9973,9 +9902,9 @@ qemuBuildCommandLine(virConnectPtr conn,
                     cont->idx == 0 && qemuDomainMachineIsQ35(def))
                         continue;
 
-                /* first IDE controller on i440fx machines is implicit */
+                /* first IDE controller is implicit on various machines */
                 if (cont->type == VIR_DOMAIN_CONTROLLER_TYPE_IDE &&
-                    cont->idx == 0 && qemuDomainMachineIsI440FX(def))
+                    cont->idx == 0 && qemuDomainMachineHasBuiltinIDE(def))
                         continue;
 
                 if (cont->type == VIR_DOMAIN_CONTROLLER_TYPE_USB &&
@@ -10938,9 +10867,6 @@ qemuBuildCommandLine(virConnectPtr conn,
                                      "supported by this version of qemu"));
                     goto error;
                 }
-                /* VFIO requires all of the guest's memory to be locked
-                 * resident */
-                mlock = true;
             }
 
             if (virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE)) {
@@ -11005,34 +10931,8 @@ qemuBuildCommandLine(virConnectPtr conn,
         }
     }
 
-    if (migrateFrom) {
-        virCommandAddArg(cmd, "-incoming");
-        if (STRPREFIX(migrateFrom, "tcp")) {
-            virCommandAddArg(cmd, migrateFrom);
-        } else if (STRPREFIX(migrateFrom, "rdma")) {
-            if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MIGRATE_RDMA)) {
-                virReportError(VIR_ERR_OPERATION_UNSUPPORTED, "%s",
-                               _("incoming RDMA migration is not supported "
-                                 "with this QEMU binary"));
-                goto error;
-            }
-            virCommandAddArg(cmd, migrateFrom);
-        } else if (STREQ(migrateFrom, "stdio")) {
-            virCommandAddArgFormat(cmd, "fd:%d", migrateFd);
-            virCommandPassFD(cmd, migrateFd, 0);
-        } else if (STRPREFIX(migrateFrom, "exec")) {
-            virCommandAddArg(cmd, migrateFrom);
-        } else if (STRPREFIX(migrateFrom, "fd")) {
-            virCommandAddArg(cmd, migrateFrom);
-            virCommandPassFD(cmd, migrateFd, 0);
-        } else if (STRPREFIX(migrateFrom, "unix")) {
-            virCommandAddArg(cmd, migrateFrom);
-        } else {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           "%s", _("unknown migration protocol"));
-            goto error;
-        }
-    }
+    if (migrateURI)
+        virCommandAddArgList(cmd, "-incoming", migrateURI, NULL);
 
     /* QEMU changed its default behavior to not include the virtio balloon
      * device.  Explicitly request it to ensure it will be present.
@@ -11193,7 +11093,9 @@ qemuBuildCommandLine(virConnectPtr conn,
             goto error;
     }
 
-    if (mlock)
+    /* In some situations, eg. VFIO passthrough, QEMU might need to lock a
+     * significant amount of memory, so we need to set the limit accordingly */
+    if (qemuDomainRequiresMlock(def))
         virCommandSetMaxMemLock(cmd, qemuDomainGetMlockLimitBytes(def));
 
     if (virQEMUCapsGet(qemuCaps, QEMU_CAPS_MSG_TIMESTAMP) &&

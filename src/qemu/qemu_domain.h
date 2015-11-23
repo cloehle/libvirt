@@ -90,6 +90,7 @@ typedef enum {
     QEMU_ASYNC_JOB_SAVE,
     QEMU_ASYNC_JOB_DUMP,
     QEMU_ASYNC_JOB_SNAPSHOT,
+    QEMU_ASYNC_JOB_START,
 
     QEMU_ASYNC_JOB_LAST
 } qemuDomainAsyncJob;
@@ -478,11 +479,16 @@ bool qemuDomainMachineIsQ35(const virDomainDef *def);
 bool qemuDomainMachineIsI440FX(const virDomainDef *def);
 bool qemuDomainMachineNeedsFDC(const virDomainDef *def);
 bool qemuDomainMachineIsS390CCW(const virDomainDef *def);
+bool qemuDomainMachineHasBuiltinIDE(const virDomainDef *def);
 
 int qemuDomainUpdateCurrentMemorySize(virQEMUDriverPtr driver,
                                       virDomainObjPtr vm);
 
 unsigned long long qemuDomainGetMlockLimitBytes(virDomainDefPtr def);
 bool qemuDomainRequiresMlock(virDomainDefPtr def);
+
+int qemuDomainDefValidateMemoryHotplug(const virDomainDef *def,
+                                       virQEMUCapsPtr qemuCaps,
+                                       const virDomainMemoryDef *mem);
 
 #endif /* __QEMU_DOMAIN_H__ */

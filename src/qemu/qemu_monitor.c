@@ -960,6 +960,8 @@ qemuMonitorClose(qemuMonitorPtr mon)
     PROBE(QEMU_MONITOR_CLOSE,
           "mon=%p refs=%d", mon, mon->parent.parent.u.s.refs);
 
+    qemuMonitorSetDomainLog(mon, -1);
+
     if (mon->fd >= 0) {
         if (mon->watch) {
             virEventRemoveHandle(mon->watch);
@@ -3810,4 +3812,16 @@ qemuMonitorGetMemoryDeviceInfo(qemuMonitorPtr mon,
     }
 
     return ret;
+}
+
+
+int
+qemuMonitorMigrateIncoming(qemuMonitorPtr mon,
+                           const char *uri)
+{
+    VIR_DEBUG("uri=%s", uri);
+
+    QEMU_CHECK_MONITOR_JSON(mon);
+
+    return qemuMonitorJSONMigrateIncoming(mon, uri);
 }

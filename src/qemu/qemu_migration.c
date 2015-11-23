@@ -2764,6 +2764,28 @@ qemuMigrationWaitForCompletion(virQEMUDriverPtr driver,
 
 
 static int
+qemuMigrationWaitForDestCompletion(virQEMUDriverPtr driver,
+                                   virDomainObjPtr vm,
+                                   qemuDomainAsyncJob asyncJob)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int rv;
+
+    if (!virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_MIGRATION_EVENT))
+        return 0;
+
+    VIR_DEBUG("Waiting for incoming migration to complete");
+
+    while ((rv = qemuMigrationCompleted(driver, vm, asyncJob, NULL, 0)) != 1) {
+        if (rv < 0 || virDomainObjWait(vm) < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
+
+static int
 qemuDomainMigrateGraphicsRelocate(virQEMUDriverPtr driver,
                                   virDomainObjPtr vm,
                                   qemuMigrationCookiePtr cookie,
@@ -2884,6 +2906,82 @@ qemuDomainMigrateOPDRelocate(virQEMUDriverPtr driver ATTRIBUTE_UNUSED,
     }
 
     ret = 0;
+ cleanup:
+    return ret;
+}
+
+
+int
+qemuMigrationCheckIncoming(virQEMUCapsPtr qemuCaps,
+                           const char *migrateFrom)
+{
+    if (STRPREFIX(migrateFrom, "rdma")) {
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_MIGRATE_RDMA)) {
+            virReportError(VIR_ERR_OPERATION_UNSUPPORTED, "%s",
+                           _("incoming RDMA migration is not supported "
+                             "with this QEMU binary"));
+            return -1;
+        }
+    } else if (!STRPREFIX(migrateFrom, "tcp") &&
+               !STRPREFIX(migrateFrom, "exec") &&
+               !STRPREFIX(migrateFrom, "fd") &&
+               !STRPREFIX(migrateFrom, "unix") &&
+               STRNEQ(migrateFrom, "stdio")) {
+        virReportError(VIR_ERR_OPERATION_UNSUPPORTED, "%s",
+                       _("unknown migration protocol"));
+        return -1;
+    }
+
+    return 0;
+}
+
+
+char *
+qemuMigrationIncomingURI(const char *migrateFrom,
+                         int migrateFd)
+{
+    char *uri = NULL;
+
+    if (STREQ(migrateFrom, "stdio"))
+        ignore_value(virAsprintf(&uri, "fd:%d", migrateFd));
+    else
+        ignore_value(VIR_STRDUP(uri, migrateFrom));
+
+    return uri;
+}
+
+
+int
+qemuMigrationRunIncoming(virQEMUDriverPtr driver,
+                         virDomainObjPtr vm,
+                         const char *uri,
+                         qemuDomainAsyncJob asyncJob)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = -1;
+    int rv;
+
+    VIR_DEBUG("Setting up incoming migration with URI %s", uri);
+
+    if (qemuDomainObjEnterMonitorAsync(driver, vm, asyncJob) < 0)
+        return -1;
+
+    rv = qemuMonitorMigrateIncoming(priv->mon, uri);
+
+    if (qemuDomainObjExitMonitor(driver, vm) < 0 || rv < 0)
+        goto cleanup;
+
+    if (asyncJob == QEMU_ASYNC_JOB_MIGRATION_IN) {
+        /* qemuMigrationWaitForDestCompletion is called from the Finish phase */
+        ret = 0;
+        goto cleanup;
+    }
+
+    if (qemuMigrationWaitForDestCompletion(driver, vm, asyncJob) < 0)
+        goto cleanup;
+
+    ret = 0;
+
  cleanup:
     return ret;
 }
@@ -5731,22 +5829,13 @@ qemuMigrationFinish(virQEMUDriverPtr driver,
         /* We need to wait for QEMU to process all data sent by the source
          * before starting guest CPUs.
          */
-        if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_MIGRATION_EVENT)) {
-            int rv;
-            VIR_DEBUG("Waiting for migration to complete");
-            while ((rv = qemuMigrationCompleted(driver, vm,
-                                                QEMU_ASYNC_JOB_MIGRATION_IN,
-                                                NULL, 0)) != 1) {
-                if (rv < 0 || virDomainObjWait(vm) < 0) {
-                    /* There's not much we can do for v2 protocol since the
-                     * original domain on the source host is already gone.
-                     */
-                    if (v3proto)
-                        goto endjob;
-                    else
-                        break;
-                }
-            }
+        if (qemuMigrationWaitForDestCompletion(driver, vm,
+                                               QEMU_ASYNC_JOB_MIGRATION_IN) < 0) {
+            /* There's not much we can do for v2 protocol since the
+             * original domain on the source host is already gone.
+             */
+            if (v3proto)
+                goto endjob;
         }
 
         if (!(flags & VIR_MIGRATE_PAUSED)) {

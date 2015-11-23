@@ -1269,17 +1269,26 @@ qemuDomainAttachHostPCIDevice(virQEMUDriverPtr driver,
                              "supported by this version of qemu"));
             goto error;
         }
-
-        /* setup memory locking limits, that are necessary for VFIO */
-        if (virProcessSetMaxMemLock(vm->pid,
-                                    qemuDomainGetMlockLimitBytes(vm->def)) < 0)
-            goto error;
-
         break;
 
     default:
         break;
     }
+
+    /* Temporarily add the hostdev to the domain definition. This is needed
+     * because qemuDomainRequiresMlock() and qemuDomainGetMlockLimitBytes()
+     * require the hostdev to be already part of the domain definition, but
+     * other functions like qemuAssignDeviceHostdevAlias() used below expect
+     * it *not* to be there. A better way to handle this would be nice */
+    vm->def->hostdevs[vm->def->nhostdevs++] = hostdev;
+    if (qemuDomainRequiresMlock(vm->def)) {
+        if (virProcessSetMaxMemLock(vm->pid,
+                                    qemuDomainGetMlockLimitBytes(vm->def)) < 0) {
+            vm->def->hostdevs[--(vm->def->nhostdevs)] = NULL;
+            goto error;
+        }
+    }
+    vm->def->hostdevs[--(vm->def->nhostdevs)] = NULL;
 
     if (qemuSetupHostdevCGroup(vm, hostdev) < 0)
         goto error;
@@ -1767,11 +1776,10 @@ qemuDomainAttachMemory(virQEMUDriverPtr driver,
     int id;
     int ret = -1;
 
-    if (vm->def->nmems == vm->def->mem.memory_slots) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("no free memory device slot available"));
+    qemuDomainMemoryDeviceAlignSize(vm->def, mem);
+
+    if (qemuDomainDefValidateMemoryHotplug(vm->def, priv->qemuCaps, mem) < 0)
         goto cleanup;
-    }
 
     if (virAsprintf(&mem->info.alias, "dimm%zu", vm->def->nmems) < 0)
         goto cleanup;
@@ -1782,10 +1790,8 @@ qemuDomainAttachMemory(virQEMUDriverPtr driver,
     if (vm->def->mem.cur_balloon == virDomainDefGetMemoryActual(vm->def))
         fix_balloon = true;
 
-    if (!(devstr = qemuBuildMemoryDeviceStr(mem, vm->def, priv->qemuCaps)))
+    if (!(devstr = qemuBuildMemoryDeviceStr(mem)))
         goto cleanup;
-
-    qemuDomainMemoryDeviceAlignSize(vm->def, mem);
 
     if (qemuBuildMemoryBackendStr(mem->size, mem->pagesize,
                                   mem->targetNode, mem->sourceNodes, NULL,

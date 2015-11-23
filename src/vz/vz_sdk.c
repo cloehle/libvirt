@@ -1831,6 +1831,14 @@ PRL_RESULT prlsdkSuspend(PRL_HANDLE sdkdom)
     return waitJob(job);
 }
 
+PRL_RESULT prlsdkRestart(PRL_HANDLE sdkdom)
+{
+    PRL_HANDLE job = PRL_INVALID_HANDLE;
+
+    job = PrlVm_Restart(sdkdom);
+    return waitJob(job);
+}
+
 int
 prlsdkDomainChangeStateLocked(vzConnPtr privconn,
                               virDomainObjPtr dom,
@@ -2220,10 +2228,11 @@ static int prlsdkCheckGraphicsUnsupportedParams(virDomainDefPtr def)
         return -1;
     }
 
-    if (gr->data.vnc.keymap != 0) {
+    if (gr->data.vnc.keymap != 0 &&
+        STRNEQ(gr->data.vnc.keymap, "en-us")) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                       _("vz driver doesn't support "
-                         "keymap setting for VNC graphics."));
+                       _("vz driver supports only "
+                         "\"en-us\" keymap for VNC graphics."));
         return -1;
     }
 
