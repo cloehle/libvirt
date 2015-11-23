@@ -2889,12 +2889,24 @@ virCommandSetDryRun(virBufferPtr buf,
 }
 
 #ifndef WIN32
-/*
+/**
+ * virCommandRunRegex:
+ * @cmd: command to run
+ * @nregex: number of regexes to apply
+ * @regex: array of regexes to apply
+ * @nvars: array of numbers of variables each regex will produce
+ * @func: callback function that is called for every line of output,
+ * needs to return 0 on success
+ * @data: additional data that will be passed to the callback function
+ * @prefix: prefix that will be skipped at the beginning of each line
+ * @exitstatus: 0 on success, -1 on memory allocation error, virCommandRun
+ * error or callback function error
+ *
  * Run an external program.
  *
  * Read its output and apply a series of regexes to each line
  * When the entire set of regexes has matched consecutively
- * then run a callback passing in all the matches
+ * then run a callback passing in all the matches of the current line.
  */
 int
 virCommandRunRegex(virCommandPtr cmd,
