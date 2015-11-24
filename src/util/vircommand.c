@@ -2899,14 +2899,16 @@ virCommandSetDryRun(virBufferPtr buf,
  * needs to return 0 on success
  * @data: additional data that will be passed to the callback function
  * @prefix: prefix that will be skipped at the beginning of each line
- * @exitstatus: 0 on success, -1 on memory allocation error, virCommandRun
- * error or callback function error
  *
  * Run an external program.
  *
  * Read its output and apply a series of regexes to each line
  * When the entire set of regexes has matched consecutively
- * then run a callback passing in all the matches of the current line.
+ * then run a callback passing in all the matches on the current line.
+ *
+ * Returns: 0 on success, -1 on memory allocation error, virCommandRun
+ * error or callback function error
+>>>>>>> e7aa45055cee32b6f98329c8270a649cd629d507
  */
 int
 virCommandRunRegex(virCommandPtr cmd,
