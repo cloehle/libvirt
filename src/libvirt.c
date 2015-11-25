@@ -450,7 +450,6 @@ virGlobalInit(void)
         goto error;
 #endif
 
-
     return;
 
  error:

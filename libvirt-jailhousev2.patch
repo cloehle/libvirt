@@ -35,6 +35,9 @@ index f716cb9..c8fe2d3 100644
  
  # ifdef VIR_ENUM_SENTINELS
      VIR_ERR_DOMAIN_LAST
+diff --git a/libvirt-jailhousev2.patch b/libvirt-jailhousev2.patch
+new file mode 100644
+index 0000000..e69de29
 diff --git a/m4/virt-driver-jailhouse.m4 b/m4/virt-driver-jailhouse.m4
 new file mode 100644
 index 0000000..65d53f2
@@ -817,18 +820,6 @@ index 25a0040..7626353 100644
               false)) {
              virReportErrorHelper(VIR_FROM_NONE, VIR_ERR_CONFIG_UNSUPPORTED,
                                   __FILE__, __FUNCTION__, __LINE__,
-diff --git a/src/util/vircommand.c b/src/util/vircommand.c
-index 1993bc6..aef9c55 100644
---- a/src/util/vircommand.c
-+++ b/src/util/vircommand.c
-@@ -2908,6 +2908,7 @@ virCommandSetDryRun(virBufferPtr buf,
-  *
-  * Returns: 0 on success, -1 on memory allocation error, virCommandRun
-  * error or callback function error
-+>>>>>>> e7aa45055cee32b6f98329c8270a649cd629d507
-  */
- int
- virCommandRunRegex(virCommandPtr cmd,
 diff --git a/src/util/virerror.c b/src/util/virerror.c
 index 6dc05f4..0d480c0 100644
 --- a/src/util/virerror.c
