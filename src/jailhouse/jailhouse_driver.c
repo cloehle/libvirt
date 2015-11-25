@@ -451,7 +451,8 @@ jailhouseDomainShutdown(virDomainPtr domain)
 }
 
 /*
- *  CAREFUL, this is the Jailhouse destroy, not the libvirt destroy, cell will be deleted and would need to be created and loaded again.
+ *  CAREFUL, this is the Jailhouse destroy, not the libvirt destroy,
+ *  cell will be deleted and would need to be created and loaded again.
  *  This is implemented anyway, so libvirt clients have an option to use jailhouse destroy too.
  */
 static int
