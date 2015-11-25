@@ -2908,7 +2908,6 @@ virCommandSetDryRun(virBufferPtr buf,
  *
  * Returns: 0 on success, -1 on memory allocation error, virCommandRun
  * error or callback function error
->>>>>>> e7aa45055cee32b6f98329c8270a649cd629d507
  */
 int
 virCommandRunRegex(virCommandPtr cmd,
