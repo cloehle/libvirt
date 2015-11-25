@@ -70,6 +70,16 @@ typedef struct virJailhouseCell virJailhouseCell;
 typedef virJailhouseCell *virJailhouseCellPtr;
 
 /*
+ *  Because virCommandRunRegex Callback gets called every line
+ */
+struct virJailhouseCellCallbackData {
+    size_t ncells;
+    virJailhouseCellPtr cells;
+};
+typedef struct virJailhouseCellCallbackData virJailhouseCellCallbackData;
+typedef virJailhouseCellCallbackData *virJailhouseCellCallbackDataPtr;
+
+/*
  *  The driver requeries the cells on most calls, it stores the result of the
  *  last query, so it can copy the UUIDs in the new query if the cell is the
  *  same(otherwise it just generates a new one).
@@ -86,29 +96,37 @@ typedef virJailhouseDriver *virJailhouseDriverPtr;
 /*
  *  Takes a string in the format of "jailhouse cell list" as input,
  *  allocates an int array in which every CPU is explicitly listed and saves a pointer in cpusptr
+ *  CPUs are either listed explicitly: 1,4,7 or implicitly: 0-7 both can be mixed in the output
  */
 static size_t
 virJailhouseParseCPUs(const char* output, int **cpusptr)
 {
     const char *current = output;
-    char *endptr;
+    const char *endptr;
     size_t count = 0;
     int number;
     int nextNumber;
     int* cpus;
     size_t i = 0;
-    if (*current == ' ') { // no CPUs assigned/failed, not an error
+    if (output == NULL) { // no CPUs assigned/failed, not an error
+        printf("parseCPUs null\n");
         *cpusptr = NULL;
         return 0;
     }
-    while (current <= output+CPULENGTH && *current != ' ') {
-        if (virStrToLong_i(current, &endptr, 0, &number))
+    while (current <= output+CPULENGTH && *current != '\0') {
+        endptr = current;
+        while (*endptr != '-' && *endptr != ',' && *endptr != '\0')
+            endptr++;
+        if (virStrToLong_i(current, (char **) &endptr, 0, &number))
             goto error;
         current = endptr;
         count++;
         if (*current == '-') {
             current++;
-            if (virStrToLong_i(current, &endptr, 0, &nextNumber))
+            endptr = current;
+            while (*endptr != ',' && *endptr != '\0')
+                endptr++;
+            if (virStrToLong_i(current, (char **) &endptr, 0, &nextNumber))
                 goto error;
             count += nextNumber - number;
             current = endptr;
@@ -119,13 +137,19 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
         goto error;
     current = output;
     while (i < count) {
-        if (virStrToLong_i(current, &endptr, 0, &number))
+        endptr = current;
+        while (*endptr != '-' && *endptr != ',' && *endptr != '\0')
+            endptr++;
+        if (virStrToLong_i(current, (char **) &endptr, 0, &number))
             goto error;
         current = endptr;
         cpus[i++] = number;
         if (*current == '-') {
             current++;
-            if (virStrToLong_i(current, &endptr, 0, &nextNumber))
+            endptr = current;
+            while (*endptr != ',' && *endptr != '\0')
+                endptr++;
+            if (virStrToLong_i(current, (char **) &endptr, 0, &nextNumber))
                 goto error;
             current = endptr;
             for (; number < nextNumber; number++)
@@ -141,6 +165,44 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
     return 0;
 }
 
+static int virJailhouseParseListOutputCallback(char **const groups, void *data)
+{
+    
+    virJailhouseCellCallbackDataPtr celldata = (virJailhouseCellCallbackDataPtr) data;
+    virJailhouseCellPtr cells = celldata->cells;
+    size_t count = celldata->ncells;
+    char* endptr = groups[0] + strlen(groups[0]) - 1;
+    char* state = groups[2];
+    if (cells == NULL) {
+        if (VIR_ALLOC(cells))
+            return -1;
+    }
+    else if (VIR_EXPAND_N(cells, count, 1))
+        return -1;
+    celldata->ncells++;
+    if (virStrToLong_i(groups[0], &endptr, 0, &cells[count].id)) {
+        printf("virStrToLong failed\n");
+        return -1;
+    }
+    
+    if (!virStrcpy(cells[count].name, groups[1], NAMELENGTH+1)){
+        printf("virStrcpy failed\n");
+        return -1;
+    }
+    if (STREQLEN(state, STATERUNNINGSTRING, STATELENGTH))
+        cells[count].state = STATERUNNING;
+    else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH))
+        cells[count].state = STATESHUTDOWN;
+    else if(STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
+        cells[count].state = STATERUNNINGLOCKED;
+    else
+        cells[count].state = STATEFAILED;
+    cells[count].assignedCPUsLength = virJailhouseParseCPUs(groups[3], &cells[count].assignedCPUs);
+    cells[count].failedCPUsLength = virJailhouseParseCPUs(groups[4], &cells[count].failedCPUs);
+    celldata->cells = cells;
+    return 0;
+}
+
 /*
  *  calls "jailhouse cell list" and parses the output in an array of virJailhouseCell
  *  example output:
@@ -148,79 +210,25 @@ virJailhouseParseCPUs(const char* output, int **cpusptr)
  *  0       QEMU-VM                 running         0-3
  */
 static ssize_t
-virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedOutput)
+virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedCells)
 {
-    char *output = NULL;
-    ssize_t count = -1; //  Don't count table header line
-    size_t i = 0;
-    ssize_t j;
-    size_t k;
-    char c;
+    int nvars[] = { 5 };
+    virJailhouseCellCallbackData callbackData;
+    const char *regex[] = { "([0-9]{1,8})\\s*([0-9a-zA-z-]{1,24})\\s*([a-z/ ]{1,16})\\s*([0-9,-]{1,24})?\\s*([0-9,-]{1,24})?\\s*" };
     virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)conn->privateData)->binary);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "list");
     virCommandAddEnvPassCommon(cmd);
-    virCommandSetOutputBuffer(cmd, &output);
-    if (virCommandRun(cmd, NULL) < 0)
-        goto cleanup;
-    while (output[i] != '\0') {
-        if (output[i] == '\n') count++;
-        i++;
+    callbackData.cells = NULL;
+    callbackData.ncells = 0;
+    if (virCommandRunRegex(cmd, 1, regex, nvars, &virJailhouseParseListOutputCallback, &callbackData, NULL) < 0) {
+        printf("FAILED\n");
+        virCommandFree(cmd);
+        return -1;
     }
-    if (count < 1)
-        goto error;
-    if (VIR_ALLOC_N(*parsedOutput, count) < 0) {
-        count = -1;
-        goto error;
-    }
-    i = 0;
-    while (output[i++] != '\n'); //  Skip table header line
-    for (j = 0; j < count; j++) {
-        for (k = 0; k <= IDLENGTH; k++) // char after number needs to be NUL for virStrToLong
-            if (output[i+k] == ' ') {
-                output[i+k] = '\0';
-                break;
-            }
-        c = output[i+IDLENGTH];
-        output[i+IDLENGTH] = '\0'; //   in case ID is 8 chars long, so beginning of name won't get parsed
-        if (virStrToLong_i(output+i, NULL, 0, &(*parsedOutput)[j].id))
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                    _("Failed to parse id to long: %s"), output+i);
-        output[i+IDLENGTH] = c;
-        i += IDLENGTH;
-        if (virStrncpy((*parsedOutput)[j].name, output+i, NAMELENGTH, NAMELENGTH+1) == NULL)
-            // should never happen
-            goto error;
-        (*parsedOutput)[j].name[NAMELENGTH] = '\0';
-        for (k = 0; k < NAMELENGTH; k++)
-            if ((*parsedOutput)[j].name[k] == ' ')
-                    break;
-        (*parsedOutput)[j].name[k] = '\0';
-        i += NAMELENGTH;
-        if (STREQLEN(output+i, STATERUNNINGSTRING, STATELENGTH)) (*parsedOutput)[j].state = STATERUNNING;
-        else if (STREQLEN(output+i, STATESHUTDOWNSTRING, STATELENGTH)) (*parsedOutput)[j].state = STATESHUTDOWN;
-        else if (STREQLEN(output+i, STATEFAILEDSTRING, STATELENGTH)) (*parsedOutput)[j].state = STATEFAILED;
-        else if (STREQLEN(output+i, STATERUNNINGLOCKEDSTRING, STATELENGTH)) (*parsedOutput)[j].state = STATERUNNINGLOCKED;
-        i += STATELENGTH;
-        (*parsedOutput)[j].assignedCPUsLength = virJailhouseParseCPUs(output+i, &((*parsedOutput)[j].assignedCPUs));
-        i += CPULENGTH;
-        (*parsedOutput)[j].failedCPUsLength = virJailhouseParseCPUs(output+i, &((*parsedOutput)[j].failedCPUs));
-        i += CPULENGTH;
-        i++; // skip \n
-    }
-    goto cleanup;
-    error:
-    for (j = 0; j < count; j++) {
-        VIR_FREE((*parsedOutput)[j].assignedCPUs);
-        VIR_FREE((*parsedOutput)[j].failedCPUs);
-    }
-    VIR_FREE(*parsedOutput);
-    *parsedOutput = NULL;
-    count = -1;
-    cleanup:
-    VIR_FREE(output);
     virCommandFree(cmd);
-    return count;
+    *parsedCells = callbackData.cells;
+    return callbackData.ncells;
 }
 
 /*
@@ -254,6 +262,8 @@ virJailhouseCellToDomainPtr(virConnectPtr conn,  virJailhouseCellPtr cell)
  */
 static void virJailhouseSetUUID(virJailhouseCellPtr cells, size_t count, virJailhouseCellPtr cell)
 {
+    printf("id: %d\n", cell->id);
+    printf("name: %s\n", cell->name);
     size_t i;
     for (i = 0; i < count; i++) {
         if (strncmp(cells[i].name, cell->name, NAMELENGTH+1))
