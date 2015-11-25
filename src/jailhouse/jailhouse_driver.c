@@ -90,7 +90,6 @@ typedef virJailhouseDriver *virJailhouseDriverPtr;
 
 static int virJailhouseParseListOutputCallback(char **const groups, void *data)
 {
-    
     virJailhouseCellCallbackDataPtr celldata = (virJailhouseCellCallbackDataPtr) data;
     virJailhouseCellPtr cells = celldata->cells;
     size_t count = celldata->ncells;
@@ -111,7 +110,7 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
         cells[count].state = STATERUNNING;
     else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH))
         cells[count].state = STATESHUTDOWN;
-    else if(STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
+    else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
         cells[count].state = STATERUNNINGLOCKED;
     else
         cells[count].state = STATEFAILED;
