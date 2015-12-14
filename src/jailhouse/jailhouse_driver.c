@@ -51,7 +51,6 @@
 #define STATESHUTDOWNSTRING         "shut down       "
 #define STATEFAILED 3
 #define STATEFAILEDSTRING           "failed          "
-#define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
 #define JAILHOUSEBINARY "jailhouse"
 
 struct virJailhouseCell {
@@ -235,7 +234,6 @@ static virDrvOpenStatus
 jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED, unsigned int flags)
 {
     virCheckFlags(0, VIR_DRV_OPEN_ERROR);
-    char *output;
     virJailhouseDriverPtr driver;
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
@@ -246,23 +244,6 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
                         conn->uri->path);
         return VIR_DRV_OPEN_ERROR;
     }
-    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
-    virCommandAddArg(cmd, "--version");
-    virCommandAddEnvPassCommon(cmd);
-    virCommandSetOutputBuffer(cmd, &output);
-    if (virCommandRun(cmd, NULL) < 0) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("Executing '%s --version' failed."),
-                       conn->uri->path);
-        goto error;
-    }
-    if (STRNEQLEN(JAILHOUSEVERSIONOUTPUT, output, strlen(JAILHOUSEVERSIONOUTPUT))) {
-        virReportError(VIR_ERR_INTERNAL_ERROR,
-                       _("%s doesn't seem to be a correct Jailhouse binary."),
-                       conn->uri->path);
-        goto error;
-    }
-    VIR_FREE(output);
     virCommandFree(cmd);
     if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
