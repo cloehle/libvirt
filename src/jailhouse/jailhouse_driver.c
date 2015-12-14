@@ -326,7 +326,7 @@ jailhouseDomainLookupByID(virConnectPtr conn, int id)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
-    if (virJailhouseGetCurrentCellList(conn))
+    if (virJailhouseGetCurrentCellList(conn) == -1)
         return NULL;
 
     cellsCount = driver->lastQueryCellsCount;
