@@ -187,7 +187,7 @@ static void virJailhouseSetUUID(virJailhouseCellPtr cells, size_t count, virJail
 /*
  *  Frees the old list of cells, gets the new one and preserves UUID if cells were present in the old
  */
-static void
+static int
 virJailhouseGetCurrentCellList(virConnectPtr conn)
 {
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
@@ -197,8 +197,6 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
     virJailhouseCellPtr lastCells = driver->lastQueryCells;
     virJailhouseCellPtr cells = NULL;
     count = virJailhouseParseListOutput(&cells);
-    if (count == -1)
-        count = 0;
     for (i = 0; i < count; i++)
         virJailhouseSetUUID(lastCells, lastCount, cells+i);
     for (i = 0; i < lastCount; i++) {
@@ -208,6 +206,7 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
     VIR_FREE(lastCells);
     driver->lastQueryCells = cells;
     driver->lastQueryCellsCount = count;
+    return count;
 }
 
 /*
@@ -220,7 +219,8 @@ virDomainPtrToCell(virDomainPtr dom)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)dom->conn->privateData;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(dom->conn);
+    if (virJailhouseGetCurrentCellList(dom->conn) == -1)
+        return NULL;
     cellsCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
@@ -289,7 +289,8 @@ jailhouseConnectClose(virConnectPtr conn)
 static int
 jailhouseConnectNumOfDomains(virConnectPtr conn)
 {
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn) == -1)
+        return -1;
     return ((virJailhouseDriverPtr)conn->privateData)->lastQueryCellsCount;
 }
 
@@ -299,7 +300,8 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn) == -1)
+        return -1;
     cellsCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < maxids && i < cellsCount; i++)
@@ -312,11 +314,13 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
 {
     virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, 0);
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
+    virJailhouseCellPtr cells;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn) == -1)
+        goto error;
     cellsCount = driver->lastQueryCellsCount;
-    virJailhouseCellPtr cells = driver->lastQueryCells;
+    cells = driver->lastQueryCells;
     if (cellsCount == -1)
         goto error;
     if (VIR_ALLOC_N(*domains, cellsCount+1) < 0)
@@ -336,7 +340,8 @@ jailhouseDomainLookupByID(virConnectPtr conn, int id)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn))
+        return NULL;
     cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
@@ -354,7 +359,8 @@ jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn) == -1)
+        return NULL;
     cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
@@ -372,7 +378,8 @@ jailhouseDomainLookupByUUID(virConnectPtr conn, const unsigned char * uuid)
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     size_t cellsCount;
     size_t i;
-    virJailhouseGetCurrentCellList(conn);
+    if (virJailhouseGetCurrentCellList(conn) == -1)
+        return NULL;
     cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
