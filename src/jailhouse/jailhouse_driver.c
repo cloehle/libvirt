@@ -52,6 +52,7 @@
 #define STATEFAILED 3
 #define STATEFAILEDSTRING           "failed          "
 #define JAILHOUSEVERSIONOUTPUT      "Jailhouse management tool"
+#define JAILHOUSEBINARY "jailhouse"
 
 struct virJailhouseCell {
     int id;
@@ -81,7 +82,6 @@ typedef virJailhouseCellCallbackData *virJailhouseCellCallbackDataPtr;
  *  not preserving the UUID results in a lot of bugs in libvirts clients.
  */
 struct virJailhouseDriver {
-    char *binary;
     size_t lastQueryCellsCount;
     virJailhouseCellPtr lastQueryCells;
 };
@@ -123,12 +123,12 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
  *  0       QEMU-VM                 running         0-3
  */
 static ssize_t
-virJailhouseParseListOutput(virConnectPtr conn, virJailhouseCellPtr *parsedCells)
+virJailhouseParseListOutput(virJailhouseCellPtr *parsedCells)
 {
     int nvars[] = { 5 };
     virJailhouseCellCallbackData callbackData;
-    const char *regex[] = { "([0-9]{1,8})\\s*([0-9a-zA-z-]{1,24})\\s*([a-z/ ]{1,16})\\s*([0-9,-]{1,24})?\\s*([0-9,-]{1,24})?\\s*" };
-    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)conn->privateData)->binary);
+    const char *regex[] = { "([0-9]{1,8})\\s*([-0-9a-zA-Z]{1,24})\\s*([a-z/ ]{1,16})\\s*([0-9,-]{1,24})?\\s*([0-9,-]{1,24})?\\s*" };
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "list");
     virCommandAddEnvPassCommon(cmd);
@@ -196,7 +196,7 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
     size_t lastCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr lastCells = driver->lastQueryCells;
     virJailhouseCellPtr cells = NULL;
-    count = virJailhouseParseListOutput(conn, &cells);
+    count = virJailhouseParseListOutput(&cells);
     if (count == -1)
         count = 0;
     for (i = 0; i < count; i++)
@@ -233,16 +233,11 @@ static virDrvOpenStatus
 jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED, unsigned int flags)
 {
     virCheckFlags(0, VIR_DRV_OPEN_ERROR);
-    char* binary;
     char *output;
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
             return VIR_DRV_OPEN_DECLINED;
-    if (conn->uri->path != NULL)
-        return VIR_DRV_OPEN_ERROR;
-    if (VIR_STRDUP(binary, "jailhouse") != 1)
-        return VIR_DRV_OPEN_ERROR;
-    virCommandPtr cmd = virCommandNew(binary);
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "--version");
     virCommandAddEnvPassCommon(cmd);
     virCommandSetOutputBuffer(cmd, &output);
@@ -263,7 +258,6 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     virJailhouseDriverPtr driver;
     if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
-    driver->binary = binary;
     driver->lastQueryCells = NULL;
     driver->lastQueryCellsCount = 0;
     conn->privateData = driver;
@@ -287,7 +281,6 @@ jailhouseConnectClose(virConnectPtr conn)
         virBitmapFree(cells[i].failedCPUs);
     }
     VIR_FREE(cells);
-    VIR_FREE(driver->binary);
     VIR_FREE(driver);
     conn->privateData = NULL;
     return 0;
@@ -425,7 +418,7 @@ static int
 jailhouseDomainShutdown(virDomainPtr domain)
 {
     int resultcode;
-    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "shutdown");
     virCommandAddArgFormat(cmd, "%d", domain->id);
@@ -446,7 +439,7 @@ static int
 jailhouseDomainDestroy(virDomainPtr domain)
 {
     int resultcode;
-    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "destroy");
     virCommandAddArgFormat(cmd, "%d", domain->id);
@@ -462,7 +455,7 @@ static int
 jailhouseDomainCreate(virDomainPtr domain)
 {
     int resultcode;
-    virCommandPtr cmd = virCommandNew(((virJailhouseDriverPtr)domain->conn->privateData)->binary);
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "start");
     virCommandAddArgFormat(cmd, "%d", domain->id);
