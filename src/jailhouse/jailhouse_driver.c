@@ -95,27 +95,23 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
     size_t count = celldata->ncells;
     char* endptr = groups[0] + strlen(groups[0]) - 1;
     char* state = groups[2];
-    if (cells == NULL) {
-        if (VIR_ALLOC(cells))
-            return -1;
-    }
-    else if (VIR_EXPAND_N(cells, count, 1))
+    if (VIR_EXPAND_N(cells, count, 1))
         return -1;
     celldata->ncells++;
-    if (virStrToLong_i(groups[0], &endptr, 0, &cells[count].id))
+    if (virStrToLong_i(groups[0], &endptr, 0, &cells[count-1].id))
         return -1;
-    if (!virStrcpy(cells[count].name, groups[1], NAMELENGTH+1))
+    if (!virStrcpy(cells[count-1].name, groups[1], NAMELENGTH+1))
         return -1;
     if (STREQLEN(state, STATERUNNINGSTRING, STATELENGTH))
-        cells[count].state = STATERUNNING;
+        cells[count-1].state = STATERUNNING;
     else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH))
-        cells[count].state = STATESHUTDOWN;
+        cells[count-1].state = STATESHUTDOWN;
     else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
-        cells[count].state = STATERUNNINGLOCKED;
+        cells[count-1].state = STATERUNNINGLOCKED;
     else
-        cells[count].state = STATEFAILED;
-    virBitmapParse(groups[3], 0, &cells[count].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
-    virBitmapParse(groups[4], 0, &cells[count].failedCPUs, VIR_DOMAIN_CPUMASK_LEN);
+        cells[count-1].state = STATEFAILED;
+    virBitmapParse(groups[3], 0, &cells[count-1].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
+    virBitmapParse(groups[4], 0, &cells[count-1].failedCPUs, VIR_DOMAIN_CPUMASK_LEN);
     celldata->cells = cells;
     return 0;
 }
