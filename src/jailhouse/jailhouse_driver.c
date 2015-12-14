@@ -487,7 +487,7 @@ jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
     char* xml;
     virDomainDefPtr domainDef = virDomainDefNewFull(domain->name, domain->uuid, domain->id);
     xml = virDomainDefFormat(domainDef, 0);
-    virObjectUnref(domainDef);
+    virDomainDefFree(domainDef);
     return xml;
 }
 
