@@ -172,6 +172,7 @@ test_programs = virshtest sockettest \
 	virkeycodetest \
 	virlockspacetest \
 	virlogtest \
+	virrotatingfiletest \
 	virstringtest \
 	virportallocatortest \
 	sysinfotest \
@@ -658,7 +659,7 @@ lxcxml2xmltest_SOURCES = \
 lxcxml2xmltest_LDADD = $(lxc_LDADDS)
 
 lxcconf2xmltest_SOURCES = \
-	lxcconf2xmltest.c \
+	lxcconf2xmltest.c testutilslxc.c testutilslxc.h \
 	testutils.c testutils.h
 lxcconf2xmltest_LDADD = $(lxc_LDADDS)
 else ! WITH_LXC
@@ -1060,6 +1061,11 @@ virnetdevmock_la_CFLAGS = $(AM_CFLAGS) $(LIBNL_CFLAGS)
 virnetdevmock_la_LIBADD = $(GNULIB_LIBS) \
 					   ../src/libvirt.la
 virnetdevmock_la_LDFLAGS = $(MOCKLIBS_LDFLAGS)
+
+virrotatingfiletest_SOURCES = \
+	virrotatingfiletest.c testutils.h testutils.c
+virrotatingfiletest_CFLAGS = $(AM_CFLAGS)
+virrotatingfiletest_LDADD = $(LDADDS)
 
 if WITH_LINUX
 virusbtest_SOURCES = \

@@ -1622,7 +1622,7 @@ cmdBlkiotune(vshControl * ctl, const vshCmd * cmd)
             goto save_error;
     }
 
-    rv = vshCommandOptString(ctl, cmd, "device-weights", &device_weight);
+    rv = vshCommandOptStringQuiet(ctl, cmd, "device-weights", &device_weight);
     if (rv < 0) {
         vshError(ctl, "%s", _("Unable to parse string parameter"));
         goto cleanup;
@@ -1633,7 +1633,7 @@ cmdBlkiotune(vshControl * ctl, const vshCmd * cmd)
             goto save_error;
     }
 
-    rv = vshCommandOptString(ctl, cmd, "device-read-iops-sec", &device_riops);
+    rv = vshCommandOptStringQuiet(ctl, cmd, "device-read-iops-sec", &device_riops);
     if (rv < 0) {
         vshError(ctl, "%s", _("Unable to parse string parameter"));
         goto cleanup;
@@ -1644,7 +1644,7 @@ cmdBlkiotune(vshControl * ctl, const vshCmd * cmd)
             goto save_error;
     }
 
-    rv = vshCommandOptString(ctl, cmd, "device-write-iops-sec", &device_wiops);
+    rv = vshCommandOptStringQuiet(ctl, cmd, "device-write-iops-sec", &device_wiops);
     if (rv < 0) {
         vshError(ctl, "%s", _("Unable to parse string parameter"));
         goto cleanup;
@@ -1655,7 +1655,7 @@ cmdBlkiotune(vshControl * ctl, const vshCmd * cmd)
             goto save_error;
     }
 
-    rv = vshCommandOptString(ctl, cmd, "device-read-bytes-sec", &device_rbps);
+    rv = vshCommandOptStringQuiet(ctl, cmd, "device-read-bytes-sec", &device_rbps);
     if (rv < 0) {
         vshError(ctl, "%s", _("Unable to parse string parameter"));
         goto cleanup;
@@ -1666,7 +1666,7 @@ cmdBlkiotune(vshControl * ctl, const vshCmd * cmd)
             goto save_error;
     }
 
-    rv = vshCommandOptString(ctl, cmd, "device-write-bytes-sec", &device_wbps);
+    rv = vshCommandOptStringQuiet(ctl, cmd, "device-write-bytes-sec", &device_wbps);
     if (rv < 0) {
         vshError(ctl, "%s", _("Unable to parse string parameter"));
         goto cleanup;
@@ -2332,11 +2332,11 @@ cmdBlockCopy(vshControl *ctl, const vshCmd *cmd)
 
     if (vshCommandOptStringReq(ctl, cmd, "path", &path) < 0)
         return false;
-    if (vshCommandOptString(ctl, cmd, "dest", &dest) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "dest", &dest) < 0)
         return false;
-    if (vshCommandOptString(ctl, cmd, "xml", &xml) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "xml", &xml) < 0)
         return false;
-    if (vshCommandOptString(ctl, cmd, "format", &format) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "format", &format) < 0)
         return false;
     /* XXX: Parse bandwidth as scaled input, rather than forcing
      * MiB/s, and either reject negative input or treat it as 0 rather
@@ -3736,7 +3736,7 @@ cmdUndefine(vshControl *ctl, const vshCmd *cmd)
     size_t j;
     virshControlPtr priv = ctl->privData;
 
-    ignore_value(vshCommandOptString(ctl, cmd, "storage", &vol_string));
+    ignore_value(vshCommandOptStringQuiet(ctl, cmd, "storage", &vol_string));
 
     if (!(vol_string || remove_all_storage) && wipe_storage) {
         vshError(ctl,
@@ -4115,7 +4115,7 @@ cmdStartGetFDs(vshControl *ctl,
     *nfdsret = 0;
     *fdsret = NULL;
 
-    if (vshCommandOptString(ctl, cmd, "pass-fds", &fdopt) <= 0)
+    if (vshCommandOptStringQuiet(ctl, cmd, "pass-fds", &fdopt) <= 0)
         return 0;
 
     if (!(fdlist = virStringSplit(fdopt, ",", -1))) {
@@ -5310,7 +5310,7 @@ doDump(void *opaque)
             goto out;
         }
 
-        if (vshCommandOptString(ctl, cmd, "format", &format) > 0) {
+        if (vshCommandOptStringQuiet(ctl, cmd, "format", &format) > 0) {
             if (STREQ(format, "kdump-zlib")) {
                 dumpformat = VIR_DOMAIN_CORE_DUMP_FORMAT_KDUMP_ZLIB;
             } else if (STREQ(format, "kdump-lzo")) {
@@ -7116,10 +7116,8 @@ cmdIOThreadPin(vshControl *ctl, const vshCmd *cmd)
     if (vshCommandOptUInt(ctl, cmd, "iothread", &iothread_id) < 0)
         goto cleanup;
 
-    if (vshCommandOptString(ctl, cmd, "cpulist", &cpulist) < 0) {
-        vshError(ctl, "%s", _("iothreadpin: invalid cpulist."));
+    if (vshCommandOptStringReq(ctl, cmd, "cpulist", &cpulist) < 0)
         goto cleanup;
-    }
 
     if ((maxcpu = virshNodeGetCPUCount(priv->conn)) < 0)
         goto cleanup;
@@ -8361,7 +8359,7 @@ cmdSendKey(vshControl *ctl, const vshCmd *cmd)
     if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
         return false;
 
-    if (vshCommandOptString(ctl, cmd, "codeset", &codeset_option) <= 0)
+    if (vshCommandOptStringQuiet(ctl, cmd, "codeset", &codeset_option) <= 0)
         codeset_option = "linux";
 
     if (vshCommandOptUInt(ctl, cmd, "holdtime", &holdtime) < 0)
@@ -8777,7 +8775,7 @@ virshMemtuneGetSize(vshControl *ctl, const vshCmd *cmd,
     const char *str;
     char *end;
 
-    ret = vshCommandOptString(ctl, cmd, name, &str);
+    ret = vshCommandOptStringQuiet(ctl, cmd, name, &str);
     if (ret <= 0)
         return ret;
     if (virStrToLong_ll(str, &end, 10, value) < 0)
@@ -9241,7 +9239,7 @@ cmdQemuMonitorEvent(vshControl *ctl, const vshCmd *cmd)
     data.count = 0;
     if (vshCommandOptTimeoutToMs(ctl, cmd, &timeout) < 0)
         return false;
-    if (vshCommandOptString(ctl, cmd, "event", &event) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "event", &event) < 0)
         return false;
 
     if (vshCommandOptBool(cmd, "domain"))
@@ -11566,7 +11564,10 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
                    const char *target,
                    virshUpdateDiskXMLType type)
 {
+    xmlNodePtr tmp = NULL;
     xmlNodePtr source = NULL;
+    xmlNodePtr target_node = NULL;
+    xmlNodePtr text_node = NULL;
     char *device_type = NULL;
     char *ret = NULL;
     char *startupPolicy = NULL;
@@ -11583,9 +11584,31 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
     }
 
     /* find the current source subelement */
-    for (source = disk_node->children; source; source = source->next) {
-        if (source->type == XML_ELEMENT_NODE &&
-            xmlStrEqual(source->name, BAD_CAST "source"))
+    for (tmp = disk_node->children; tmp; tmp = tmp->next) {
+        /*
+         * Save the last text node before the <target/>.  The
+         * reasoning behind this is that the target node will be
+         * present in this case and also has a proper indentation.
+         */
+        if (!target_node && tmp->type == XML_TEXT_NODE)
+            text_node = tmp;
+
+        /*
+         * We need only element nodes from now on.
+         */
+        if (tmp->type != XML_ELEMENT_NODE)
+            continue;
+
+        if (xmlStrEqual(tmp->name, BAD_CAST "source"))
+            source = tmp;
+
+        if (xmlStrEqual(tmp->name, BAD_CAST "target"))
+            target_node = tmp;
+
+        /*
+         * We've found all we needed.
+         */
+        if (source && target_node)
             break;
     }
 
@@ -11637,7 +11660,22 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
 
         if (startupPolicy)
             xmlNewProp(source, BAD_CAST "startupPolicy", BAD_CAST startupPolicy);
-        xmlAddChild(disk_node, source);
+
+        /*
+         * So that the output XML looks nice in case anyone calls
+         * 'change-media' with '--print-xml', let's attach the source
+         * before target...
+         */
+        xmlAddPrevSibling(target_node, source);
+
+        /*
+         * ... and duplicate the text node doing the indentation just
+         * so it's more easily readable.  And don't make it fatal.
+         */
+        if ((tmp = xmlCopyNode(text_node, 0))) {
+            if (!xmlAddPrevSibling(target_node, tmp))
+                xmlFreeNode(tmp);
+        }
     }
 
     if (!(ret = virXMLNodeToString(NULL, disk_node))) {
@@ -12528,7 +12566,7 @@ cmdEvent(vshControl *ctl, const vshCmd *cmd)
         return true;
     }
 
-    if (vshCommandOptString(ctl, cmd, "event", &eventName) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "event", &eventName) < 0)
         return false;
     if (eventName) {
         for (event = 0; event < VIR_DOMAIN_EVENT_ID_LAST; event++)

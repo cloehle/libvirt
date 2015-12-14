@@ -375,6 +375,7 @@ mymain(void)
 
     DO_TEST("hyperv");
     DO_TEST("hyperv-off");
+    DO_TEST("hyperv-panic");
 
     DO_TEST("kvm-features");
     DO_TEST("kvm-features-off");
@@ -534,7 +535,7 @@ mymain(void)
 
     DO_TEST("pseries-nvram");
     DO_TEST_DIFFERENT("pseries-panic-missing");
-    DO_TEST("pseries-panic-no-address");
+    DO_TEST_DIFFERENT("pseries-panic-no-address");
 
     /* These tests generate different XML */
     DO_TEST_DIFFERENT("balloon-device-auto");
@@ -590,7 +591,10 @@ mymain(void)
     DO_TEST("pcihole64-none");
     DO_TEST("pcihole64-q35");
 
-    DO_TEST("panic");
+    DO_TEST_DIFFERENT("panic");
+    DO_TEST("panic-isa");
+    DO_TEST("panic-pseries");
+    DO_TEST("panic-double");
     DO_TEST("panic-no-address");
 
     DO_TEST_DIFFERENT("disk-backing-chains");
@@ -625,6 +629,11 @@ mymain(void)
     DO_TEST("memory-hotplug-nonuma");
     DO_TEST("memory-hotplug-dimm");
     DO_TEST("net-udp");
+
+    DO_TEST("video-virtio-gpu-device");
+    DO_TEST("video-virtio-gpu-virgl");
+    DO_TEST("virtio-input");
+    DO_TEST("virtio-input-passthrough");
 
     qemuTestDriverFree(&driver);
 

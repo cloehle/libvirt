@@ -327,6 +327,14 @@ typedef enum {
 
     /* 200 */
     QEMU_CAPS_INCOMING_DEFER, /* -incoming defer and migrate_incoming */
+    QEMU_CAPS_DEVICE_VIRTIO_GPU, /* -device virtio-gpu-* & virtio-vga */
+    QEMU_CAPS_DEVICE_VIRTIO_GPU_VIRGL, /* -device virtio-gpu-*.virgl */
+    QEMU_CAPS_VIRTIO_KEYBOARD, /* -device virtio-keyboard-{device,pci} */
+    QEMU_CAPS_VIRTIO_MOUSE, /* -device virtio-mouse-{device,pci} */
+
+    /* 205 */
+    QEMU_CAPS_VIRTIO_TABLET, /* -device virtio-tablet-{device,pci} */
+    QEMU_CAPS_VIRTIO_INPUT_HOST, /* -device virtio-input-host-{device,pci} */
 
     QEMU_CAPS_LAST /* this must always be the last item */
 } virQEMUCapsFlags;

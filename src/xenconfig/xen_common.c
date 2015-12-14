@@ -502,11 +502,16 @@ xenParseCPUFeatures(virConfPtr conf, virDomainDefPtr def)
         MAX_VIRT_CPUS < count)
         return -1;
 
-    def->maxvcpus = count;
+    if (virDomainDefSetVcpusMax(def, count) < 0)
+        return -1;
+
     if (xenConfigGetULong(conf, "vcpu_avail", &count, -1) < 0)
         return -1;
 
-    def->vcpus = MIN(count_one_bits_l(count), def->maxvcpus);
+    if (virDomainDefSetVcpus(def, MIN(count_one_bits_l(count),
+                                      virDomainDefGetVcpusMax(def))) < 0)
+        return -1;
+
     if (xenConfigGetString(conf, "cpus", &str, NULL) < 0)
         return -1;
 
@@ -553,6 +558,8 @@ xenParseCPUFeatures(virConfPtr conf, virDomainDefPtr def)
             timer->name = VIR_DOMAIN_TIMER_NAME_HPET;
             timer->present = val;
             timer->tickpolicy = -1;
+            timer->mode = -1;
+            timer->track = -1;
 
             def->clock.ntimers = 1;
             def->clock.timers[0] = timer;
@@ -1524,13 +1531,14 @@ xenFormatCPUAllocation(virConfPtr conf, virDomainDefPtr def)
     int ret = -1;
     char *cpus = NULL;
 
-    if (xenConfigSetInt(conf, "vcpus", def->maxvcpus) < 0)
+    if (xenConfigSetInt(conf, "vcpus", virDomainDefGetVcpusMax(def)) < 0)
         goto cleanup;
 
     /* Computing the vcpu_avail bitmask works because MAX_VIRT_CPUS is
        either 32, or 64 on a platform where long is big enough.  */
-    if (def->vcpus < def->maxvcpus &&
-        xenConfigSetInt(conf, "vcpu_avail", (1UL << def->vcpus) - 1) < 0)
+    if (virDomainDefHasVcpusOffline(def) &&
+        xenConfigSetInt(conf, "vcpu_avail",
+                        (1UL << virDomainDefGetVcpus(def)) - 1) < 0)
         goto cleanup;
 
     if ((def->cpumask != NULL) &&

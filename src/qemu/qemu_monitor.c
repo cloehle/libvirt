@@ -94,8 +94,10 @@ struct _qemuMonitor {
     char *balloonpath;
     bool ballooninit;
 
-    /* Log file fd of the qemu process to dig for usable info */
-    int logfd;
+    /* Log file context of the qemu process to dig for usable info */
+    qemuMonitorReportDomainLogError logFunc;
+    void *logOpaque;
+    virFreeCallback logDestroy;
 };
 
 /**
@@ -314,7 +316,6 @@ qemuMonitorDispose(void *obj)
     VIR_FREE(mon->buffer);
     virJSONValueFree(mon->options);
     VIR_FREE(mon->balloonpath);
-    VIR_FORCE_CLOSE(mon->logfd);
 }
 
 
@@ -386,38 +387,6 @@ qemuMonitorOpenPty(const char *monitor)
     }
 
     return monfd;
-}
-
-
-/* Get a possible error from qemu's log. This function closes the
- * corresponding log fd */
-static char *
-qemuMonitorGetErrorFromLog(qemuMonitorPtr mon)
-{
-    int len;
-    char *logbuf = NULL;
-    int orig_errno = errno;
-
-    if (mon->logfd < 0)
-        return NULL;
-
-    if (VIR_ALLOC_N_QUIET(logbuf, 4096) < 0)
-        goto error;
-
-    if ((len = qemuProcessReadLog(mon->logfd, logbuf, 4096 - 1, 0, true)) <= 0)
-        goto error;
-
-    while (len > 0 && logbuf[len - 1] == '\n')
-        logbuf[--len] = '\0';
-
- cleanup:
-    errno = orig_errno;
-    VIR_FORCE_CLOSE(mon->logfd);
-    return logbuf;
-
- error:
-    VIR_FREE(logbuf);
-    goto cleanup;
 }
 
 
@@ -737,25 +706,19 @@ qemuMonitorIO(int watch, int fd, int events, void *opaque)
     }
 
     if (error || eof) {
-        if (hangup) {
+        if (hangup && mon->logFunc != NULL) {
             /* Check if an error message from qemu is available and if so, use
              * it to overwrite the actual message. It's done only in early
              * startup phases or during incoming migration when the message
              * from qemu is certainly more interesting than a
              * "connection reset by peer" message.
              */
-            char *qemuMessage;
-
-            if ((qemuMessage = qemuMonitorGetErrorFromLog(mon))) {
-                virReportError(VIR_ERR_INTERNAL_ERROR,
-                               _("early end of file from monitor: "
-                                 "possible problem:\n%s"),
-                               qemuMessage);
-                virCopyLastError(&mon->lastError);
-                virResetLastError();
-            }
-
-            VIR_FREE(qemuMessage);
+            mon->logFunc(mon,
+                         _("early end of file from monitor, "
+                           "possible problem"),
+                         mon->logOpaque);
+            virCopyLastError(&mon->lastError);
+            virResetLastError();
         }
 
         if (mon->lastError.code != VIR_ERR_OK) {
@@ -838,7 +801,6 @@ qemuMonitorOpenInternal(virDomainObjPtr vm,
     if (!(mon = virObjectLockableNew(qemuMonitorClass)))
         return NULL;
 
-    mon->logfd = -1;
     if (virCondInit(&mon->notify) < 0) {
         virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                        _("cannot initialize monitor condition"));
@@ -960,7 +922,7 @@ qemuMonitorClose(qemuMonitorPtr mon)
     PROBE(QEMU_MONITOR_CLOSE,
           "mon=%p refs=%d", mon, mon->parent.parent.u.s.refs);
 
-    qemuMonitorSetDomainLog(mon, -1);
+    qemuMonitorSetDomainLog(mon, NULL, NULL, NULL);
 
     if (mon->fd >= 0) {
         if (mon->watch) {
@@ -1993,6 +1955,9 @@ qemuMonitorSetBalloon(qemuMonitorPtr mon,
 }
 
 
+/*
+ * Returns: 0 if CPU modification was successful or -1 on failure
+ */
 int
 qemuMonitorSetCPU(qemuMonitorPtr mon, int cpu, bool online)
 {
@@ -3693,19 +3658,22 @@ qemuMonitorGetDeviceAliases(qemuMonitorPtr mon,
  * early startup errors of qemu.
  *
  * @mon: Monitor object to set the log file reading on
- * @logfd: File descriptor of the already open log file
+ * @func: the callback to report errors
+ * @opaque: data to pass to @func
+ * @destroy: optional callback to free @opaque
  */
-int
-qemuMonitorSetDomainLog(qemuMonitorPtr mon, int logfd)
+void
+qemuMonitorSetDomainLog(qemuMonitorPtr mon,
+                        qemuMonitorReportDomainLogError func,
+                        void *opaque,
+                        virFreeCallback destroy)
 {
-    VIR_FORCE_CLOSE(mon->logfd);
-    if (logfd >= 0 &&
-        (mon->logfd = dup(logfd)) < 0) {
-        virReportSystemError(errno, "%s", _("failed to duplicate log fd"));
-        return -1;
-    }
+    if (mon->logDestroy && mon->logOpaque)
+        mon->logDestroy(mon->logOpaque);
 
-    return 0;
+    mon->logFunc = func;
+    mon->logOpaque = opaque;
+    mon->logDestroy = destroy;
 }
 
 

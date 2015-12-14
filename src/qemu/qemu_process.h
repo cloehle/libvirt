@@ -81,6 +81,26 @@ int qemuProcessStart(virConnectPtr conn,
                      virNetDevVPortProfileOp vmop,
                      unsigned int flags);
 
+int qemuProcessInit(virQEMUDriverPtr driver,
+                    virDomainObjPtr vm,
+                    bool migration);
+
+int qemuProcessLaunch(virConnectPtr conn,
+                      virQEMUDriverPtr driver,
+                      virDomainObjPtr vm,
+                      qemuDomainAsyncJob asyncJob,
+                      qemuProcessIncomingDefPtr incoming,
+                      virDomainSnapshotObjPtr snapshot,
+                      virNetDevVPortProfileOp vmop,
+                      unsigned int flags);
+
+int qemuProcessFinishStartup(virConnectPtr conn,
+                             virQEMUDriverPtr driver,
+                             virDomainObjPtr vm,
+                             qemuDomainAsyncJob asyncJob,
+                             bool startCPUs,
+                             virDomainPausedReason pausedReason);
+
 typedef enum {
     VIR_QEMU_PROCESS_STOP_MIGRATED      = 1 << 0,
     VIR_QEMU_PROCESS_STOP_NO_RELABEL    = 1 << 1,
@@ -119,8 +139,6 @@ int qemuProcessAutoDestroyRemove(virQEMUDriverPtr driver,
                                  virDomainObjPtr vm);
 bool qemuProcessAutoDestroyActive(virQEMUDriverPtr driver,
                                   virDomainObjPtr vm);
-
-int qemuProcessReadLog(int fd, char *buf, int buflen, int off, bool skipchar);
 
 int qemuProcessSetSchedParams(int id, pid_t pid, size_t nsp,
                               virDomainThreadSchedParamPtr sp);

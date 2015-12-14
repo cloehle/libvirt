@@ -1882,8 +1882,9 @@ virDomainSetMaxMemory(virDomainPtr domain, unsigned long memory)
  * to Domain0 i.e. the domain where the application runs.
  * This function may require privileged access to the hypervisor.
  *
- * This command only changes the runtime configuration of the domain,
- * so can only be called on an active domain.
+ * This command is hypervisor-specific for whether active, persistent,
+ * or both configurations are changed; for more control, use
+ * virDomainSetMemoryFlags().
  *
  * Returns 0 in case of success and -1 in case of failure.
  */
@@ -8392,19 +8393,10 @@ virDomainAttachDeviceFlags(virDomainPtr domain,
  * @domain: pointer to domain object
  * @xml: pointer to XML description of one device
  *
- * Destroy a virtual device attachment to backend.  This function,
- * having hot-unplug semantics, is only allowed on an active domain.
+ * This is an equivalent of virDomainDetachDeviceFlags() when called with
+ * @flags parameter set to VIR_DOMAIN_AFFECT_LIVE.
  *
- * Be aware that hotplug changes might not persist across a domain going
- * into S4 state (also known as hibernation) unless you also modify the
- * persistent domain definition.
- *
- * The supplied XML description of the device should be as specific
- * as its definition in the domain XML. The set of attributes used
- * to match the device are internal to the drivers. Using a partial definition,
- * or attempting to detach a device that is not present in the domain XML,
- * but shares some specific attributes with one that is present,
- * may lead to unexpected results.
+ * See virDomainDetachDeviceFlags() for more details.
  *
  * Returns 0 in case of success, -1 in case of failure.
  */

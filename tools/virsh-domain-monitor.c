@@ -32,7 +32,7 @@
 #include <libxml/xmlsave.h>
 
 #include "internal.h"
-#include "conf/domain_conf.h"
+#include "conf/virdomainobjlist.h"
 #include "intprops.h"
 #include "viralloc.h"
 #include "virmacaddr.h"
@@ -1873,7 +1873,8 @@ cmdList(vshControl *ctl, const vshCmd *cmd)
     unsigned int flags = VIR_CONNECT_LIST_DOMAINS_ACTIVE;
 
     /* construct filter flags */
-    if (vshCommandOptBool(cmd, "inactive"))
+    if (vshCommandOptBool(cmd, "inactive") ||
+        vshCommandOptBool(cmd, "state-shutoff"))
         flags = VIR_CONNECT_LIST_DOMAINS_INACTIVE;
 
     if (vshCommandOptBool(cmd, "all"))
@@ -2242,9 +2243,9 @@ cmdDomIfAddr(vshControl *ctl, const vshCmd *cmd)
     if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
         return false;
 
-    if (vshCommandOptString(ctl, cmd, "interface", &ifacestr) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "interface", &ifacestr) < 0)
         goto cleanup;
-    if (vshCommandOptString(ctl, cmd, "source", &sourcestr) < 0)
+    if (vshCommandOptStringReq(ctl, cmd, "source", &sourcestr) < 0)
         goto cleanup;
 
     if (sourcestr) {

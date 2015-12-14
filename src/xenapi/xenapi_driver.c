@@ -1502,8 +1502,11 @@ xenapiDomainGetXMLDesc(virDomainPtr dom, unsigned int flags)
 
     vcpus = xenapiDomainGetMaxVcpus(dom);
 
-    defPtr->maxvcpus = vcpus;
-    defPtr->vcpus = vcpus;
+    if (virDomainDefSetVcpusMax(defPtr, vcpus) < 0)
+        goto error;
+
+    if (virDomainDefSetVcpus(defPtr, vcpus) < 0)
+        goto error;
 
     enum xen_on_normal_exit action;
     if (xen_vm_get_actions_after_shutdown(session, &action, vm))

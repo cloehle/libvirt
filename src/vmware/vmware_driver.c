@@ -1035,7 +1035,7 @@ vmwareConnectDomainXMLFromNative(virConnectPtr conn, const char *nativeFormat,
     ctx.autodetectSCSIControllerModel = NULL;
     ctx.datacenterPath = NULL;
 
-    def = virVMXParseConfig(&ctx, driver->xmlopt, nativeConfig);
+    def = virVMXParseConfig(&ctx, driver->xmlopt, driver->caps, nativeConfig);
 
     if (def != NULL)
         xml = virDomainDefFormat(def, VIR_DOMAIN_DEF_FORMAT_INACTIVE);
@@ -1142,7 +1142,7 @@ vmwareDomainGetInfo(virDomainPtr dom, virDomainInfoPtr info)
     info->cpuTime = 0;
     info->maxMem = virDomainDefGetMemoryActual(vm->def);
     info->memory = vm->def->mem.cur_balloon;
-    info->nrVirtCpu = vm->def->vcpus;
+    info->nrVirtCpu = virDomainDefGetVcpus(vm->def);
     ret = 0;
 
  cleanup:

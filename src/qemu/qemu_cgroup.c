@@ -198,6 +198,26 @@ qemuSetupTPMCgroup(virDomainObjPtr vm)
 
 
 static int
+qemuSetupInputCgroup(virDomainObjPtr vm,
+                     virDomainInputDefPtr dev)
+{
+    qemuDomainObjPrivatePtr priv = vm->privateData;
+    int ret = 0;
+
+    switch (dev->type) {
+    case VIR_DOMAIN_INPUT_TYPE_PASSTHROUGH:
+        VIR_DEBUG("Process path '%s' for input device", dev->source.evdev);
+        ret = virCgroupAllowDevicePath(priv->cgroup, dev->source.evdev,
+                                       VIR_CGROUP_DEVICE_RW);
+        virDomainAuditCgroupPath(vm, priv->cgroup, "allow", dev->source.evdev, "rw", ret == 0);
+        break;
+    }
+
+    return ret;
+}
+
+
+static int
 qemuSetupHostUSBDeviceCgroup(virUSBDevicePtr dev ATTRIBUTE_UNUSED,
                              const char *path,
                              void *opaque)
@@ -591,6 +611,11 @@ qemuSetupDevicesCgroup(virQEMUDriverPtr driver,
             goto cleanup;
     }
 
+    for (i = 0; i < vm->def->ninputs; i++) {
+        if (qemuSetupInputCgroup(vm, vm->def->inputs[i]) < 0)
+            goto cleanup;
+    }
+
     for (i = 0; i < vm->def->nrngs; i++) {
         if (vm->def->rngs[i]->backend == VIR_DOMAIN_RNG_BACKEND_RANDOM) {
             VIR_DEBUG("Setting Cgroup ACL for RNG device");
@@ -795,7 +820,12 @@ qemuRestoreCgroupState(virDomainObjPtr vm)
     if (virCgroupSetCpusetMems(priv->cgroup, mem_mask) < 0)
         goto error;
 
-    for (i = 0; i < priv->nvcpupids; i++) {
+    for (i = 0; i < virDomainDefGetVcpusMax(vm->def); i++) {
+        virDomainVcpuInfoPtr vcpu = virDomainDefGetVcpu(vm->def, i);
+
+        if (!vcpu->online)
+            continue;
+
         if (virCgroupNewThread(priv->cgroup, VIR_CGROUP_THREAD_VCPU, i,
                                false, &cgroup_temp) < 0 ||
             virCgroupSetCpusetMemoryMigrate(cgroup_temp, true) < 0 ||
@@ -993,24 +1023,16 @@ qemuSetupCgroupForVcpu(virDomainObjPtr vm)
     /*
      * If CPU cgroup controller is not initialized here, then we need
      * neither period nor quota settings.  And if CPUSET controller is
-     * not initialized either, then there's nothing to do anyway.
+     * not initialized either, then there's nothing to do anyway. CPU pinning
+     * will be set via virProcessSetAffinity.
      */
     if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPU) &&
         !virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPUSET))
         return 0;
 
-    /* We are trying to setup cgroups for CPU pinning, which can also be done
-     * with virProcessSetAffinity, thus the lack of cgroups is not fatal here.
-     */
-    if (priv->cgroup == NULL)
+    /* If vCPU<->pid mapping is missing we can't do vCPU pinning */
+    if (!qemuDomainHasVcpuPids(vm))
         return 0;
-
-    if (priv->nvcpupids == 0 || priv->vcpupids[0] == vm->pid) {
-        /* If we don't know VCPU<->PID mapping or all vcpu runs in the same
-         * thread, we cannot control each vcpu.
-         */
-        return 0;
-    }
 
     if (virDomainNumatuneGetMode(vm->def->numa, -1, &mem_mode) == 0 &&
         mem_mode == VIR_DOMAIN_NUMATUNE_MEM_STRICT &&
@@ -1019,14 +1041,20 @@ qemuSetupCgroupForVcpu(virDomainObjPtr vm)
                                             &mem_mask, -1) < 0)
         goto cleanup;
 
-    for (i = 0; i < priv->nvcpupids; i++) {
+    for (i = 0; i < virDomainDefGetVcpusMax(def); i++) {
+        virDomainVcpuInfoPtr vcpu = virDomainDefGetVcpu(def, i);
+
+        if (!vcpu->online)
+            continue;
+
         virCgroupFree(&cgroup_vcpu);
         if (virCgroupNewThread(priv->cgroup, VIR_CGROUP_THREAD_VCPU, i,
                                true, &cgroup_vcpu) < 0)
             goto cleanup;
 
         /* move the thread for vcpu to sub dir */
-        if (virCgroupAddTask(cgroup_vcpu, priv->vcpupids[i]) < 0)
+        if (virCgroupAddTask(cgroup_vcpu,
+                             qemuDomainGetVcpuPid(vm, i)) < 0)
             goto cleanup;
 
         if (period || quota) {
@@ -1104,9 +1132,6 @@ qemuSetupCgroupForEmulator(virDomainObjPtr vm)
         !virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPUSET))
         return 0;
 
-    if (priv->cgroup == NULL)
-        return 0; /* Not supported, so claim success */
-
     if (virCgroupNewThread(priv->cgroup, VIR_CGROUP_THREAD_EMULATOR, 0,
                            true, &cgroup_emulator) < 0)
         goto cleanup;
@@ -1175,12 +1200,6 @@ qemuSetupCgroupForIOThreads(virDomainObjPtr vm)
      */
     if (!virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPU) &&
         !virCgroupHasController(priv->cgroup, VIR_CGROUP_CONTROLLER_CPUSET))
-        return 0;
-
-    /* We are trying to setup cgroups for CPU pinning, which can also be done
-     * with virProcessSetAffinity, thus the lack of cgroups is not fatal here.
-     */
-    if (priv->cgroup == NULL)
         return 0;
 
     if (virDomainNumatuneGetMode(vm->def->numa, -1, &mem_mode) == 0 &&

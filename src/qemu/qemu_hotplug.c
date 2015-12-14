@@ -607,16 +607,10 @@ qemuDomainAttachSCSIDisk(virConnectPtr conn,
         goto error;
     }
 
-    if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_DEVICE)) {
-        if (qemuAssignDeviceDiskAlias(vm->def, disk, priv->qemuCaps) < 0)
-            goto error;
-        if (!(devstr = qemuBuildDriveDevStr(vm->def, disk, 0, priv->qemuCaps)))
-            goto error;
-    }
-
-    if (!(drivestr = qemuBuildDriveStr(conn, disk, false, priv->qemuCaps)))
-        goto error;
-
+    /* Let's make sure our disk has a controller defined and loaded
+     * before trying add the disk. The controller the disk is going
+     * to use must exist before a qemu command line string is generated.
+     */
     for (i = 0; i <= disk->info.addr.drive.controller; i++) {
         cont = qemuDomainFindOrCreateSCSIDiskController(driver, vm, i);
         if (!cont)
@@ -627,6 +621,16 @@ qemuDomainAttachSCSIDisk(virConnectPtr conn,
        This is because disk->info.addr.driver.controller is unsigned,
        and hence the above loop must iterate at least once.  */
     sa_assert(cont);
+
+    if (virQEMUCapsGet(priv->qemuCaps, QEMU_CAPS_DEVICE)) {
+        if (qemuAssignDeviceDiskAlias(vm->def, disk, priv->qemuCaps) < 0)
+            goto error;
+        if (!(devstr = qemuBuildDriveDevStr(vm->def, disk, 0, priv->qemuCaps)))
+            goto error;
+    }
+
+    if (!(drivestr = qemuBuildDriveStr(conn, disk, false, priv->qemuCaps)))
+        goto error;
 
     if (VIR_REALLOC_N(vm->def->disks, vm->def->ndisks+1) < 0)
         goto error;
@@ -947,15 +951,17 @@ int qemuDomainAttachNetDevice(virConnectPtr conn,
         if (qemuOpenVhostNet(vm->def, net, priv->qemuCaps, vhostfd, &vhostfdSize) < 0)
             goto cleanup;
     } else if (actualType == VIR_DOMAIN_NET_TYPE_DIRECT) {
-        tapfdSize = vhostfdSize = 1;
-        if (VIR_ALLOC(tapfd) < 0)
+        tapfdSize = vhostfdSize = net->driver.virtio.queues;
+        if (!tapfdSize)
+            tapfdSize = vhostfdSize = 1;
+        if (VIR_ALLOC_N(tapfd, tapfdSize) < 0)
             goto cleanup;
-        *tapfd = -1;
-        if (VIR_ALLOC(vhostfd) < 0)
+        memset(tapfd, -1, sizeof(*tapfd) * tapfdSize);
+        if (VIR_ALLOC_N(vhostfd, vhostfdSize) < 0)
             goto cleanup;
-        *vhostfd = -1;
-        if ((tapfd[0] = qemuPhysIfaceConnect(vm->def, driver, net,
-                                             VIR_NETDEV_VPORT_PROFILE_OP_CREATE)) < 0)
+        memset(vhostfd, -1, sizeof(*vhostfd) * vhostfdSize);
+        if (qemuPhysIfaceConnect(vm->def, driver, net, tapfd, tapfdSize,
+                                 VIR_NETDEV_VPORT_PROFILE_OP_CREATE) < 0)
             goto cleanup;
         iface_connected = true;
         if (qemuOpenVhostNet(vm->def, net, priv->qemuCaps, vhostfd, &vhostfdSize) < 0)

@@ -1092,6 +1092,7 @@ xenParseSxpr(const struct sexpr *root,
     const char *tmp;
     virDomainDefPtr def;
     int hvm = 0, vmlocaltime;
+    unsigned int vcpus;
 
     if (!(def = virDomainDefNew()))
         goto error;
@@ -1173,10 +1174,15 @@ xenParseSxpr(const struct sexpr *root,
         }
     }
 
-    def->maxvcpus = sexpr_int(root, "domain/vcpus");
-    def->vcpus = count_one_bits_l(sexpr_u64(root, "domain/vcpu_avail"));
-    if (!def->vcpus || def->maxvcpus < def->vcpus)
-        def->vcpus = def->maxvcpus;
+    if (virDomainDefSetVcpusMax(def, sexpr_int(root, "domain/vcpus")) < 0)
+        goto error;
+
+    vcpus = count_one_bits_l(sexpr_u64(root, "domain/vcpu_avail"));
+    if (!vcpus || virDomainDefGetVcpusMax(def) < vcpus)
+        vcpus = virDomainDefGetVcpusMax(def);
+
+    if (virDomainDefSetVcpus(def, vcpus) < 0)
+        goto error;
 
     tmp = sexpr_node(root, "domain/on_poweroff");
     if (tmp != NULL) {
@@ -1262,6 +1268,8 @@ xenParseSxpr(const struct sexpr *root,
             timer->name = VIR_DOMAIN_TIMER_NAME_HPET;
             timer->present = sexpr_int(root, "domain/image/hvm/hpet");
             timer->tickpolicy = -1;
+            timer->mode = -1;
+            timer->track = -1;
 
             def->clock.ntimers = 1;
             def->clock.timers[0] = timer;
@@ -1491,7 +1499,11 @@ xenParseSxpr(const struct sexpr *root,
  */
 virDomainDefPtr
 xenParseSxprString(const char *sexpr,
-                         int xendConfigVersion, char *tty, int vncport)
+                   int xendConfigVersion,
+                   char *tty,
+                   int vncport,
+                   virCapsPtr caps,
+                   virDomainXMLOptionPtr xmlopt)
 {
     struct sexpr *root = string2sexpr(sexpr);
     virDomainDefPtr def;
@@ -1499,8 +1511,16 @@ xenParseSxprString(const char *sexpr,
     if (!root)
         return NULL;
 
-    def = xenParseSxpr(root, xendConfigVersion, NULL, tty, vncport);
+    if (!(def = xenParseSxpr(root, xendConfigVersion, NULL, tty, vncport)))
+        goto cleanup;
 
+    if (virDomainDefPostParse(def, caps, VIR_DOMAIN_DEF_PARSE_ABI_UPDATE,
+                              xmlopt) < 0) {
+        virDomainDefFree(def);
+        def = NULL;
+    }
+
+ cleanup:
     sexpr_free(root);
 
     return def;
@@ -2222,11 +2242,12 @@ xenFormatSxpr(virConnectPtr conn,
     virBufferAsprintf(&buf, "(memory %llu)(maxmem %llu)",
                       VIR_DIV_UP(def->mem.cur_balloon, 1024),
                       VIR_DIV_UP(virDomainDefGetMemoryActual(def), 1024));
-    virBufferAsprintf(&buf, "(vcpus %u)", def->maxvcpus);
+    virBufferAsprintf(&buf, "(vcpus %u)", virDomainDefGetVcpusMax(def));
     /* Computing the vcpu_avail bitmask works because MAX_VIRT_CPUS is
        either 32, or 64 on a platform where long is big enough.  */
-    if (def->vcpus < def->maxvcpus)
-        virBufferAsprintf(&buf, "(vcpu_avail %lu)", (1UL << def->vcpus) - 1);
+    if (virDomainDefHasVcpusOffline(def))
+        virBufferAsprintf(&buf, "(vcpu_avail %lu)",
+                          (1UL << virDomainDefGetVcpus(def)) - 1);
 
     if (def->cpumask) {
         char *ranges = virBitmapFormat(def->cpumask);
@@ -2306,10 +2327,10 @@ xenFormatSxpr(virConnectPtr conn,
             else
                 virBufferEscapeSexpr(&buf, "(kernel '%s')", def->os.loader->path);
 
-            virBufferAsprintf(&buf, "(vcpus %u)", def->maxvcpus);
-            if (def->vcpus < def->maxvcpus)
+            virBufferAsprintf(&buf, "(vcpus %u)", virDomainDefGetVcpusMax(def));
+            if (virDomainDefHasVcpusOffline(def))
                 virBufferAsprintf(&buf, "(vcpu_avail %lu)",
-                                  (1UL << def->vcpus) - 1);
+                                  (1UL << virDomainDefGetVcpus(def)) - 1);
 
             for (i = 0; i < def->os.nBootDevs; i++) {
                 switch (def->os.bootDevs[i]) {

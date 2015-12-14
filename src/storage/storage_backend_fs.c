@@ -1,7 +1,7 @@
 /*
  * storage_backend_fs.c: storage backend for FS and directory handling
  *
- * Copyright (C) 2007-2014 Red Hat, Inc.
+ * Copyright (C) 2007-2015 Red Hat, Inc.
  * Copyright (C) 2007-2008 Daniel P. Berrange
  *
  * This library is free software; you can redistribute it and/or
@@ -921,7 +921,7 @@ virStorageBackendFileSystemRefresh(virConnectPtr conn ATTRIBUTE_UNUSED,
         if (vol->target.backingStore) {
             ignore_value(virStorageBackendUpdateVolTargetInfo(vol->target.backingStore,
                                                               false,
-                                                              VIR_STORAGE_VOL_OPEN_DEFAULT));
+                                                              VIR_STORAGE_VOL_OPEN_DEFAULT, 0));
             /* If this failed, the backing file is currently unavailable,
              * the capacity, allocation, owner, group and mode are unknown.
              * An error message was raised, but we just continue. */
@@ -1056,6 +1056,14 @@ virStorageBackendFileSystemVolCreate(virConnectPtr conn ATTRIBUTE_UNUSED,
         vol->type = VIR_STORAGE_VOL_DIR;
     else
         vol->type = VIR_STORAGE_VOL_FILE;
+
+    /* Volumes within a directory pools are not recursive; do not
+     * allow escape to ../ or a subdir */
+    if (strchr(vol->name, '/')) {
+        virReportError(VIR_ERR_OPERATION_INVALID,
+                       _("volume name '%s' cannot contain '/'"), vol->name);
+        return -1;
+    }
 
     VIR_FREE(vol->target.path);
     if (virAsprintf(&vol->target.path, "%s/%s",
@@ -1245,7 +1253,7 @@ virStorageBackendFileSystemVolRefresh(virConnectPtr conn,
 
     /* Refresh allocation / capacity / permissions info in case its changed */
     ret = virStorageBackendUpdateVolInfo(vol, false,
-                                         VIR_STORAGE_VOL_FS_OPEN_FLAGS);
+                                         VIR_STORAGE_VOL_FS_OPEN_FLAGS, 0);
     if (ret < 0)
         return ret;
 

@@ -692,6 +692,7 @@ mymain(void)
 
     DO_TEST("hyperv", NONE);
     DO_TEST("hyperv-off", NONE);
+    DO_TEST("hyperv-panic", NONE);
 
     DO_TEST("kvm-features", NONE);
     DO_TEST("kvm-features-off", NONE);
@@ -1424,6 +1425,13 @@ mymain(void)
             QEMU_CAPS_DEVICE_QXL_VGA, QEMU_CAPS_DEVICE_QXL,
             QEMU_CAPS_DEVICE_VIDEO_PRIMARY, QEMU_CAPS_QXL_VGA_VGAMEM,
             QEMU_CAPS_QXL_VGAMEM);
+    DO_TEST("video-virtio-gpu-device",
+            QEMU_CAPS_DEVICE, QEMU_CAPS_DEVICE_VIRTIO_GPU,
+            QEMU_CAPS_DEVICE_VIDEO_PRIMARY);
+    DO_TEST("video-virtio-gpu-virgl",
+            QEMU_CAPS_DEVICE, QEMU_CAPS_DEVICE_VIRTIO_GPU,
+            QEMU_CAPS_DEVICE_VIRTIO_GPU_VIRGL,
+            QEMU_CAPS_DEVICE_VIDEO_PRIMARY);
     DO_TEST_PARSE_ERROR("video-invalid", NONE);
 
     DO_TEST("virtio-rng-default", QEMU_CAPS_DEVICE, QEMU_CAPS_DEVICE_VIRTIO_RNG,
@@ -1632,6 +1640,8 @@ mymain(void)
 
     DO_TEST("panic", QEMU_CAPS_DEVICE_PANIC,
             QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG);
+    DO_TEST("panic-double", QEMU_CAPS_DEVICE_PANIC,
+            QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG);
 
     DO_TEST("panic-no-address", QEMU_CAPS_DEVICE_PANIC,
             QEMU_CAPS_DEVICE, QEMU_CAPS_NODEFCONFIG);
@@ -1650,6 +1660,7 @@ mymain(void)
     DO_TEST_PARSE_ERROR("shmem-msi-only", NONE);
     DO_TEST("cpu-host-passthrough-features", QEMU_CAPS_KVM, QEMU_CAPS_CPU_HOST);
 
+    DO_TEST_FAILURE("memory-align-fail", NONE);
     DO_TEST_FAILURE("memory-hotplug-nonuma", QEMU_CAPS_DEVICE_PC_DIMM);
     DO_TEST_FAILURE("memory-hotplug", NONE);
     DO_TEST("memory-hotplug", QEMU_CAPS_DEVICE_PC_DIMM, QEMU_CAPS_NUMA);
@@ -1747,6 +1758,10 @@ mymain(void)
     DO_TEST("qemu-ns-commandline", NONE);
     DO_TEST("qemu-ns-commandline-ns0", NONE);
     DO_TEST("qemu-ns-commandline-ns1", NONE);
+
+    DO_TEST("virtio-input", QEMU_CAPS_DEVICE, QEMU_CAPS_VIRTIO_KEYBOARD,
+            QEMU_CAPS_VIRTIO_MOUSE, QEMU_CAPS_VIRTIO_TABLET);
+    DO_TEST("virtio-input-passthrough", QEMU_CAPS_DEVICE, QEMU_CAPS_VIRTIO_INPUT_HOST);
 
     qemuTestDriverFree(&driver);
 

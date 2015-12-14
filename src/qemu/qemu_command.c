@@ -104,7 +104,8 @@ VIR_ENUM_IMPL(qemuVideo, VIR_DOMAIN_VIDEO_TYPE_LAST,
               "", /* no arg needed for xen */
               "", /* don't support vbox */
               "qxl",
-              "" /* don't support parallels */);
+              "", /* don't support parallels */
+              "" /* no need for virtio */);
 
 VIR_ENUM_DECL(qemuDeviceVideo)
 
@@ -115,7 +116,8 @@ VIR_ENUM_IMPL(qemuDeviceVideo, VIR_DOMAIN_VIDEO_TYPE_LAST,
               "", /* no device for xen */
               "", /* don't support vbox */
               "qxl-vga",
-              "" /* don't support parallels */);
+              "", /* don't support parallels */
+              "virtio-vga");
 
 VIR_ENUM_DECL(qemuSoundCodec)
 
@@ -210,42 +212,52 @@ qemuVirCommandGetDevSet(virCommandPtr cmd, int fd)
  * @def: the definition of the VM (needed by 802.1Qbh and audit)
  * @driver: pointer to the driver instance
  * @net: pointer to the VM's interface description with direct device type
+ * @tapfd: array of file descriptor return value for the new device
+ * @tapfdSize: number of file descriptors in @tapfd
  * @vmop: VM operation type
  *
- * Returns a filedescriptor on success or -1 in case of error.
+ * Returns 0 on success or -1 in case of error.
  */
 int
 qemuPhysIfaceConnect(virDomainDefPtr def,
                      virQEMUDriverPtr driver,
                      virDomainNetDefPtr net,
+                     int *tapfd,
+                     size_t tapfdSize,
                      virNetDevVPortProfileOp vmop)
 {
-    int rc;
+    int ret = -1;
     char *res_ifname = NULL;
-    int vnet_hdr = 0;
     virQEMUDriverConfigPtr cfg = virQEMUDriverGetConfig(driver);
     unsigned int macvlan_create_flags = VIR_NETDEV_MACVLAN_CREATE_WITH_TAP;
 
     if (net->model && STREQ(net->model, "virtio"))
-        vnet_hdr = 1;
+        macvlan_create_flags |= VIR_NETDEV_MACVLAN_VNET_HDR;
 
-    rc = virNetDevMacVLanCreateWithVPortProfile(
-        net->ifname, &net->mac,
-        virDomainNetGetActualDirectDev(net),
-        virDomainNetGetActualDirectMode(net),
-        vnet_hdr, def->uuid,
-        virDomainNetGetActualVirtPortProfile(net),
-        &res_ifname,
-        vmop, cfg->stateDir,
-        macvlan_create_flags);
-    if (rc >= 0) {
-        virDomainAuditNetDevice(def, net, res_ifname, true);
-        VIR_FREE(net->ifname);
-        net->ifname = res_ifname;
+    if (virNetDevMacVLanCreateWithVPortProfile(net->ifname,
+                                               &net->mac,
+                                               virDomainNetGetActualDirectDev(net),
+                                               virDomainNetGetActualDirectMode(net),
+                                               def->uuid,
+                                               virDomainNetGetActualVirtPortProfile(net),
+                                               &res_ifname,
+                                               vmop, cfg->stateDir,
+                                               tapfd, tapfdSize,
+                                               macvlan_create_flags) < 0)
+        goto cleanup;
+
+    virDomainAuditNetDevice(def, net, res_ifname, true);
+    VIR_FREE(net->ifname);
+    net->ifname = res_ifname;
+    ret = 0;
+
+ cleanup:
+    if (ret < 0) {
+        while (tapfdSize--)
+            VIR_FORCE_CLOSE(tapfd[tapfdSize]);
     }
-
     virObjectUnref(cfg);
-    return rc;
+    return ret;
 }
 
 
@@ -1283,6 +1295,12 @@ qemuDomainPrimeVirtioDeviceAddresses(virDomainDefPtr def,
             def->nets[i]->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
             def->nets[i]->info.type = type;
         }
+    }
+
+    for (i = 0; i < def->ninputs; i++) {
+        if (def->inputs[i]->bus == VIR_DOMAIN_DISK_BUS_VIRTIO &&
+            def->inputs[i]->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE)
+            def->inputs[i]->info.type = type;
     }
 
     for (i = 0; i < def->ncontrollers; i++) {
@@ -2682,7 +2700,14 @@ qemuAssignDevicePCISlots(virDomainDefPtr def,
             goto error;
     }
     for (i = 0; i < def->ninputs; i++) {
-        /* Nada - none are PCI based (yet) */
+        if (def->inputs[i]->bus != VIR_DOMAIN_INPUT_BUS_VIRTIO)
+            continue;
+        if (def->inputs[i]->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE)
+            continue;
+
+        if (virDomainPCIAddressReserveNextSlot(addrs,
+                                               &def->inputs[i]->info, flags) < 0)
+            goto error;
     }
     for (i = 0; i < def->nparallels; i++) {
         /* Nada - none are PCI based (yet) */
@@ -5718,6 +5743,76 @@ qemuBuildNVRAMDevStr(virDomainNVRAMDefPtr dev)
     return NULL;
 }
 
+static char *
+qemuBuildVirtioInputDevStr(virDomainDefPtr def,
+                           virDomainInputDefPtr dev,
+                           virQEMUCapsPtr qemuCaps)
+{
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
+    const char *suffix;
+
+    if (dev->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_PCI) {
+        suffix = "-pci";
+    } else if (dev->info.type == VIR_DOMAIN_DEVICE_ADDRESS_TYPE_VIRTIO_MMIO) {
+        suffix = "-device";
+    } else {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("unsupported address type %s for virtio input device"),
+                       virDomainDeviceAddressTypeToString(dev->info.type));
+        goto error;
+    }
+
+    switch ((virDomainInputType) dev->type) {
+    case VIR_DOMAIN_INPUT_TYPE_MOUSE:
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_VIRTIO_MOUSE)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("virtio-mouse is not supported by this QEMU binary"));
+            goto error;
+        }
+        virBufferAsprintf(&buf, "virtio-mouse%s,id=%s", suffix, dev->info.alias);
+        break;
+    case VIR_DOMAIN_INPUT_TYPE_TABLET:
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_VIRTIO_TABLET)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("virtio-tablet is not supported by this QEMU binary"));
+            goto error;
+        }
+        virBufferAsprintf(&buf, "virtio-tablet%s,id=%s", suffix, dev->info.alias);
+        break;
+    case VIR_DOMAIN_INPUT_TYPE_KBD:
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_VIRTIO_KEYBOARD)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("virtio-keyboard is not supported by this QEMU binary"));
+            goto error;
+        }
+        virBufferAsprintf(&buf, "virtio-keyboard%s,id=%s", suffix, dev->info.alias);
+        break;
+    case VIR_DOMAIN_INPUT_TYPE_PASSTHROUGH:
+        if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_VIRTIO_INPUT_HOST)) {
+            virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                           _("virtio-input-host is not supported by this QEMU binary"));
+            goto error;
+        }
+        virBufferAsprintf(&buf, "virtio-input-host%s,id=%s,evdev=", suffix, dev->info.alias);
+        virBufferEscape(&buf, ',', ",", "%s", dev->source.evdev);
+        break;
+    case VIR_DOMAIN_INPUT_TYPE_LAST:
+        break;
+    }
+
+    if (qemuBuildDeviceAddressStr(&buf, def, &dev->info, qemuCaps) < 0)
+        goto error;
+
+    if (virBufferCheckError(&buf) < 0)
+        goto error;
+
+    return virBufferContentAndReset(&buf);
+
+ error:
+    virBufferFreeAndReset(&buf);
+    return NULL;
+}
+
 char *
 qemuBuildUSBInputDevStr(virDomainDefPtr def,
                         virDomainInputDefPtr dev,
@@ -5894,7 +5989,18 @@ qemuBuildDeviceVideoStr(virDomainDefPtr def,
 
     virBufferAsprintf(&buf, "%s,id=%s", model, video->info.alias);
 
-    if (video->type == VIR_DOMAIN_VIDEO_TYPE_QXL) {
+    if (video->type == VIR_DOMAIN_VIDEO_TYPE_VIRTIO) {
+        if (video->accel && video->accel->accel3d) {
+            if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_VIRTIO_GPU_VIRGL)) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                               "%s", _("virtio-gpu 3d acceleration is not supported"));
+                goto error;
+            }
+
+            virBufferAsprintf(&buf, ",virgl=%s",
+                              virTristateSwitchTypeToString(video->accel->accel3d));
+        }
+    } else if (video->type == VIR_DOMAIN_VIDEO_TYPE_QXL) {
         if (video->vram > (UINT_MAX / 1024)) {
             virReportError(VIR_ERR_OVERFLOW,
                            _("value for 'vram' must be less than '%u'"),
@@ -7577,6 +7683,18 @@ qemuBuildCpuArgStr(virQEMUDriverPtr driver,
         }
     }
 
+    for (i = 0; i < def->npanics; i++) {
+        if (def->panics[i]->model == VIR_DOMAIN_PANIC_MODEL_HYPERV) {
+            if (!have_cpu) {
+                virBufferAdd(&buf, default_model, -1);
+                have_cpu = true;
+            }
+
+            virBufferAddLit(&buf, ",hv_crash");
+            break;
+        }
+    }
+
     if (def->features[VIR_DOMAIN_FEATURE_KVM] == VIR_TRISTATE_SWITCH_ON) {
         if (!have_cpu) {
             virBufferAdd(&buf, default_model, -1);
@@ -7851,11 +7969,11 @@ qemuBuildSmpArgStr(const virDomainDef *def,
 {
     virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    virBufferAsprintf(&buf, "%u", def->vcpus);
+    virBufferAsprintf(&buf, "%u", virDomainDefGetVcpus(def));
 
     if (virQEMUCapsGet(qemuCaps, QEMU_CAPS_SMP_TOPOLOGY)) {
-        if (def->vcpus != def->maxvcpus)
-            virBufferAsprintf(&buf, ",maxcpus=%u", def->maxvcpus);
+        if (virDomainDefHasVcpusOffline(def))
+            virBufferAsprintf(&buf, ",maxcpus=%u", virDomainDefGetVcpusMax(def));
         /* sockets, cores, and threads are either all zero
          * or all non-zero, thus checking one of them is enough */
         if (def->cpu && def->cpu->sockets) {
@@ -7863,11 +7981,11 @@ qemuBuildSmpArgStr(const virDomainDef *def,
             virBufferAsprintf(&buf, ",cores=%u", def->cpu->cores);
             virBufferAsprintf(&buf, ",threads=%u", def->cpu->threads);
         } else {
-            virBufferAsprintf(&buf, ",sockets=%u", def->maxvcpus);
+            virBufferAsprintf(&buf, ",sockets=%u", virDomainDefGetVcpusMax(def));
             virBufferAsprintf(&buf, ",cores=%u", 1);
             virBufferAsprintf(&buf, ",threads=%u", 1);
         }
-    } else if (def->vcpus != def->maxvcpus) {
+    } else if (virDomainDefHasVcpusOffline(def)) {
         virBufferFreeAndReset(&buf);
         /* FIXME - consider hot-unplugging cpus after boot for older qemu */
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
@@ -8636,7 +8754,8 @@ qemuBuildInterfaceCommandLine(virCommandPtr cmd,
     /* Currently nothing besides TAP devices supports multiqueue. */
     if (net->driver.virtio.queues > 0 &&
         !(actualType == VIR_DOMAIN_NET_TYPE_NETWORK ||
-          actualType == VIR_DOMAIN_NET_TYPE_BRIDGE)) {
+          actualType == VIR_DOMAIN_NET_TYPE_BRIDGE ||
+          actualType == VIR_DOMAIN_NET_TYPE_DIRECT)) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("Multiqueue network is not supported for: %s"),
                        virDomainNetTypeToString(actualType));
@@ -8681,11 +8800,17 @@ qemuBuildInterfaceCommandLine(virCommandPtr cmd,
                                     tapfd, &tapfdSize) < 0)
             goto cleanup;
     } else if (actualType == VIR_DOMAIN_NET_TYPE_DIRECT) {
-        if (VIR_ALLOC(tapfd) < 0 || VIR_ALLOC(tapfdName) < 0)
+        tapfdSize = net->driver.virtio.queues;
+        if (!tapfdSize)
+            tapfdSize = 1;
+
+        if (VIR_ALLOC_N(tapfd, tapfdSize) < 0 ||
+            VIR_ALLOC_N(tapfdName, tapfdSize) < 0)
             goto cleanup;
-        tapfdSize = 1;
-        tapfd[0] = qemuPhysIfaceConnect(def, driver, net, vmop);
-        if (tapfd[0] < 0)
+
+        memset(tapfd, -1, tapfdSize * sizeof(tapfd[0]));
+
+        if (qemuPhysIfaceConnect(def, driver, net, tapfd, tapfdSize, vmop) < 0)
             goto cleanup;
     }
 
@@ -10472,6 +10597,13 @@ qemuBuildCommandLine(virConnectPtr conn,
                         break;
                 }
             }
+        } else if (input->bus == VIR_DOMAIN_INPUT_BUS_VIRTIO) {
+            char *optstr;
+            virCommandAddArg(cmd, "-device");
+            if (!(optstr = qemuBuildVirtioInputDevStr(def, input, qemuCaps)))
+                goto error;
+            virCommandAddArg(cmd, optstr);
+            VIR_FREE(optstr);
         }
     }
 
@@ -10498,8 +10630,10 @@ qemuBuildCommandLine(virConnectPtr conn,
              (primaryVideoType == VIR_DOMAIN_VIDEO_TYPE_VMVGA &&
                  virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_VMWARE_SVGA)) ||
              (primaryVideoType == VIR_DOMAIN_VIDEO_TYPE_QXL &&
-                 virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_QXL_VGA)))
-           ) {
+                 virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_QXL_VGA)) ||
+             (primaryVideoType == VIR_DOMAIN_VIDEO_TYPE_VIRTIO &&
+                 virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_VIRTIO_GPU)))
+            ) {
             for (i = 0; i < def->nvideos; i++) {
                 char *str;
                 virCommandAddArg(cmd, "-device");
@@ -11049,18 +11183,46 @@ qemuBuildCommandLine(virConnectPtr conn,
         goto error;
     }
 
-    if (def->panic) {
-        if (ARCH_IS_PPC64(def->os.arch) && STRPREFIX(def->os.machine, "pseries")) {
+    for (i = 0; i < def->npanics; i++) {
+        switch ((virDomainPanicModel) def->panics[i]->model) {
+        case VIR_DOMAIN_PANIC_MODEL_HYPERV:
+            /* Panic with model 'hyperv' is not a device, it should
+             * be configured in cpu commandline. The address
+             * cannot be configured by the user */
+            if (!ARCH_IS_X86(def->os.arch)) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                               _("only i686 and x86_64 guests support "
+                                 "panic device of model 'hyperv'"));
+                goto error;
+            }
+            if (def->panics[i]->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                               _("setting the panic device address is not "
+                                 "supported for model 'hyperv'"));
+                goto error;
+            }
+            break;
+
+        case VIR_DOMAIN_PANIC_MODEL_PSERIES:
             /* For pSeries guests, the firmware provides the same
              * functionality as the pvpanic device. The address
              * cannot be configured by the user */
-            if (def->panic->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
+            if (!ARCH_IS_PPC64(def->os.arch) ||
+                !STRPREFIX(def->os.machine, "pseries")) {
                 virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
-                               _("setting the panic device address is not "
-                                 "supported for pSeries guests"));
+                               _("only pSeries guests support panic device "
+                                 "of model 'pseries'"));
                 goto error;
             }
-        } else {
+            if (def->panics[i]->info.type != VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE) {
+                virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                               _("setting the panic device address is not "
+                                 "supported for model 'pseries'"));
+                goto error;
+            }
+            break;
+
+        case VIR_DOMAIN_PANIC_MODEL_ISA:
             if (!virQEMUCapsGet(qemuCaps, QEMU_CAPS_DEVICE_PANIC)) {
                 virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
                                _("the QEMU binary does not support the "
@@ -11068,11 +11230,11 @@ qemuBuildCommandLine(virConnectPtr conn,
                 goto error;
             }
 
-            switch (def->panic->info.type) {
+            switch (def->panics[i]->info.type) {
             case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_ISA:
                 virCommandAddArg(cmd, "-device");
                 virCommandAddArgFormat(cmd, "pvpanic,ioport=%d",
-                                       def->panic->info.addr.isa.iobase);
+                                       def->panics[i]->info.addr.isa.iobase);
                 break;
 
             case VIR_DOMAIN_DEVICE_ADDRESS_TYPE_NONE:
@@ -11085,6 +11247,11 @@ qemuBuildCommandLine(virConnectPtr conn,
                                  "with ISA address type"));
                 goto error;
             }
+
+        /* default model value was changed before in post parse */
+        case VIR_DOMAIN_PANIC_MODEL_DEFAULT:
+        case VIR_DOMAIN_PANIC_MODEL_LAST:
+            break;
         }
     }
 
@@ -12436,6 +12603,23 @@ qemuParseCommandLineCPU(virDomainDefPtr dom,
                 if (virCPUDefAddFeature(cpu, feature, policy) < 0)
                     goto cleanup;
             }
+        } else if (STREQ(tokens[i], "hv_crash")) {
+            size_t j;
+            for (j = 0; j < dom->npanics; j++) {
+                 if (dom->panics[j]->model == VIR_DOMAIN_PANIC_MODEL_HYPERV)
+                     break;
+            }
+
+            if (j == dom->npanics) {
+                virDomainPanicDefPtr panic;
+                if (VIR_ALLOC(panic) < 0 ||
+                    VIR_APPEND_ELEMENT_COPY(dom->panics,
+                                            dom->npanics, panic) < 0) {
+                    VIR_FREE(panic);
+                    goto cleanup;
+                }
+                panic->model = VIR_DOMAIN_PANIC_MODEL_HYPERV;
+            }
         } else if (STRPREFIX(tokens[i], "hv_")) {
             const char *token = tokens[i] + 3; /* "hv_" */
             const char *feature, *value;
@@ -12545,6 +12729,7 @@ qemuParseCommandLineSmp(virDomainDefPtr dom,
     unsigned int cores = 0;
     unsigned int threads = 0;
     unsigned int maxcpus = 0;
+    unsigned int vcpus = 0;
     size_t i;
     int nkws;
     char **kws;
@@ -12559,9 +12744,8 @@ qemuParseCommandLineSmp(virDomainDefPtr dom,
     for (i = 0; i < nkws; i++) {
         if (vals[i] == NULL) {
             if (i > 0 ||
-                virStrToLong_i(kws[i], &end, 10, &n) < 0 || *end != '\0')
+                virStrToLong_ui(kws[i], &end, 10, &vcpus) < 0 || *end != '\0')
                 goto syntax;
-            dom->vcpus = n;
         } else {
             if (virStrToLong_i(vals[i], &end, 10, &n) < 0 || *end != '\0')
                 goto syntax;
@@ -12578,7 +12762,14 @@ qemuParseCommandLineSmp(virDomainDefPtr dom,
         }
     }
 
-    dom->maxvcpus = maxcpus ? maxcpus : dom->vcpus;
+    if (maxcpus == 0)
+        maxcpus = vcpus;
+
+    if (virDomainDefSetVcpusMax(dom, maxcpus) < 0)
+        goto error;
+
+    if (virDomainDefSetVcpus(dom, vcpus) < 0)
+        goto error;
 
     if (sockets && cores && threads) {
         virCPUDefPtr cpu;
@@ -12692,8 +12883,10 @@ qemuParseCommandLine(virCapsPtr qemuCaps,
     def->id = -1;
     def->mem.cur_balloon = 64 * 1024;
     virDomainDefSetMemoryTotal(def, def->mem.cur_balloon);
-    def->maxvcpus = 1;
-    def->vcpus = 1;
+    if (virDomainDefSetVcpusMax(def, 1) < 0)
+        goto error;
+    if (virDomainDefSetVcpus(def, 1) < 0)
+        goto error;
     def->clock.offset = VIR_DOMAIN_CLOCK_OFFSET_UTC;
 
     def->onReboot = VIR_DOMAIN_LIFECYCLE_RESTART;
