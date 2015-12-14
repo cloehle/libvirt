@@ -244,18 +244,12 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
                         conn->uri->path);
         return VIR_DRV_OPEN_ERROR;
     }
-    virCommandFree(cmd);
     if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
     driver->lastQueryCells = NULL;
     driver->lastQueryCellsCount = 0;
     conn->privateData = driver;
     return VIR_DRV_OPEN_SUCCESS;
-
-    error:
-    VIR_FREE(output);
-    virCommandFree(cmd);
-    return VIR_DRV_OPEN_ERROR;
 }
 
 static int
