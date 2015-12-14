@@ -422,33 +422,12 @@ jailhouseDomainGetState(virDomainPtr domain, int *state,
 }
 
 static int
-jailhouseDomainShutdown(virDomainPtr domain)
-{
-    int resultcode;
-    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
-    virCommandAddArg(cmd, "cell");
-    virCommandAddArg(cmd, "shutdown");
-    virCommandAddArgFormat(cmd, "%d", domain->id);
-    virCommandAddEnvPassCommon(cmd);
-    resultcode = virCommandRun(cmd, NULL);
-    virCommandFree(cmd);
-    if (resultcode < 0)
-        return -1;
-    return 0;
-}
-
-/*
- *  CAREFUL, this is the Jailhouse destroy, not the libvirt destroy,
- *  cell will be deleted and would need to be created and loaded again.
- *  This is implemented anyway, so libvirt clients have an option to use jailhouse destroy too.
- */
-static int
 jailhouseDomainDestroy(virDomainPtr domain)
 {
     int resultcode;
     virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
-    virCommandAddArg(cmd, "destroy");
+    virCommandAddArg(cmd, "shutdown");
     virCommandAddArgFormat(cmd, "%d", domain->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
@@ -527,7 +506,6 @@ static virHypervisorDriver jailhouseHypervisorDriver = {
     .domainGetInfo = jailhouseDomainGetInfo,  /* 1.3.1 */
     .domainGetState = jailhouseDomainGetState, /* 1.3.1 */
     .domainGetXMLDesc = jailhouseDomainGetXMLDesc, /* 1.3.1 */
-    .domainShutdown = jailhouseDomainShutdown, /* 1.3.1 */
     .domainDestroy = jailhouseDomainDestroy, /* 1.3.1 */
     .domainCreate = jailhouseDomainCreate,    /* 1.3.1 */
     .nodeGetInfo = jailhouseNodeGetInfo /* 1.3.1 */
