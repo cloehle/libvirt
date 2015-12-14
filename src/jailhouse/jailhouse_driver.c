@@ -236,7 +236,13 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     char *output;
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
-            return VIR_DRV_OPEN_DECLINED;
+        return VIR_DRV_OPEN_DECLINED;
+    if (conn->uri->path != NULL && STRNEQ(conn->uri->path, "/")) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                        _("Unexpected Jailhouse URI path '%s', try jailhouse:///"),
+                        conn->uri->path);
+        return VIR_DRV_OPEN_ERROR;
+    }
     virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "--version");
     virCommandAddEnvPassCommon(cmd);
