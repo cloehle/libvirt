@@ -242,6 +242,8 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
             return VIR_DRV_OPEN_DECLINED;
+    if (conn->uri->path != NULL)
+        return VIR_DRV_OPEN_ERROR;
     if (VIR_STRDUP(binary, "jailhouse") != 1)
         return VIR_DRV_OPEN_ERROR;
     virCommandPtr cmd = virCommandNew(binary);
