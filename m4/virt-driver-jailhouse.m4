@@ -26,6 +26,11 @@ AC_DEFUN([LIBVIRT_DRIVER_CHECK_JAILHOUSE],[
     AM_CONDITIONAL([WITH_JAILHOUSE], [test "$with_jailhouse" = "yes"])
 ])
 
+
+if test "$with_jailhouse" = "yes"; then
+    AC_DEFINE_UNQUOTED([WITH_JAILHOUSE], 1, [whether jailhouse driver is enabled])
+fi
+
 AC_DEFUN([LIBVIRT_DRIVER_RESULT_JAILHOUSE],[
     AC_MSG_NOTICE([Jailhouse: $with_jailhouse])
 ])
