@@ -216,7 +216,7 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
 static virJailhouseCellPtr
 virDomainPtrToCell(virDomainPtr dom)
 {
-    virJailhouseDriverPtr driver = (virJailhouseDriverPtr)dom->conn->privateData;
+    virJailhouseDriverPtr driver = dom->conn->privateData;
     size_t cellsCount;
     size_t i;
     if (virJailhouseGetCurrentCellList(dom->conn) == -1)
