@@ -98,6 +98,7 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
     if (VIR_EXPAND_N(cells, count, 1))
         return -1;
     celldata->ncells++;
+
     if (virStrToLong_i(groups[0], &endptr, 0, &cells[count-1].id))
         return -1;
     if (!virStrcpy(cells[count-1].name, groups[1], NAMELENGTH+1))
@@ -196,6 +197,7 @@ virJailhouseGetCurrentCellList(virConnectPtr conn)
     size_t lastCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr lastCells = driver->lastQueryCells;
     virJailhouseCellPtr cells = NULL;
+
     count = virJailhouseParseListOutput(&cells);
     for (i = 0; i < count; i++)
         virJailhouseSetUUID(lastCells, lastCount, cells+i);
@@ -234,6 +236,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
 {
     virCheckFlags(0, VIR_DRV_OPEN_ERROR);
     char *output;
+    virJailhouseDriverPtr driver;
     if (conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
         return VIR_DRV_OPEN_DECLINED;
@@ -261,13 +264,13 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     }
     VIR_FREE(output);
     virCommandFree(cmd);
-    virJailhouseDriverPtr driver;
     if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
     driver->lastQueryCells = NULL;
     driver->lastQueryCellsCount = 0;
     conn->privateData = driver;
     return VIR_DRV_OPEN_SUCCESS;
+
     error:
     VIR_FREE(output);
     virCommandFree(cmd);
@@ -326,6 +329,7 @@ jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsi
     size_t i;
     if (virJailhouseGetCurrentCellList(conn) == -1)
         goto error;
+
     cellsCount = driver->lastQueryCellsCount;
     cells = driver->lastQueryCells;
     if (cellsCount == -1)
@@ -349,6 +353,7 @@ jailhouseDomainLookupByID(virConnectPtr conn, int id)
     size_t i;
     if (virJailhouseGetCurrentCellList(conn))
         return NULL;
+
     cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
@@ -368,6 +373,7 @@ jailhouseDomainLookupByName(virConnectPtr conn, const char *lookupName)
     size_t i;
     if (virJailhouseGetCurrentCellList(conn) == -1)
         return NULL;
+
     cellsCount = driver->lastQueryCellsCount;
     if (cellsCount == -1)
         return NULL;
