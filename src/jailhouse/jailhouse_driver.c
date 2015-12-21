@@ -244,6 +244,13 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
                         conn->uri->path);
         return VIR_DRV_OPEN_ERROR;
     }
+    virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
+    virCommandAddEnvPassCommon(cmd);
+    if (virCommandRun(cmd, NULL) < 0) {
+        virCommandFree(cmd);
+        return VIR_DRV_OPEN_ERROR;
+    }
+    virCommandFree(cmd);
     if (VIR_ALLOC(driver) < 0)
         return VIR_DRV_OPEN_ERROR;
     driver->lastQueryCells = NULL;
