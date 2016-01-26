@@ -250,6 +250,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
     }
     virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddEnvPassCommon(cmd);
+    virCommandAddArg(cmd, "--version");
     if (virCommandRun(cmd, NULL) < 0) {
         virCommandFree(cmd);
         return VIR_DRV_OPEN_ERROR;
