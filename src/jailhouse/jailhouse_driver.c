@@ -110,8 +110,12 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
         cells[count-1].state = STATERUNNINGLOCKED;
     else
         cells[count-1].state = STATEFAILED;
-    virBitmapParse(groups[3], 0, &cells[count-1].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
-    virBitmapParse(groups[4], 0, &cells[count-1].failedCPUs, VIR_DOMAIN_CPUMASK_LEN);
+    if (groups[3][0] == '\0')
+        cells[count-1].assignedCPUs = NULL;
+    else virBitmapParse(groups[3], 0, &cells[count-1].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
+    if (groups[4][0] == '\0')
+        cells[count-1].failedCPUs = NULL;
+    else virBitmapParse(groups[4], 0, &cells[count-1].failedCPUs, VIR_DOMAIN_CPUMASK_LEN);
     celldata->cells = cells;
     return 0;
 }
@@ -399,7 +403,8 @@ jailhouseDomainGetInfo(virDomainPtr domain, virDomainInfoPtr info)
     info->state = virJailhouseCellToState(cell);
     info->maxMem = 0;
     info->memory = 0;
-    info->nrVirtCpu = virBitmapCountBits(cell->assignedCPUs);
+    if (cell->assignedCPUs == NULL) info->nrVirtCpu = 0;
+    else info->nrVirtCpu = virBitmapCountBits(cell->assignedCPUs);
     info->cpuTime = 0;
     return 0;
 }
