@@ -483,7 +483,7 @@ jailhouseConnectGetCapabilities(virConnectPtr conn ATTRIBUTE_UNUSED)
 static char *
 jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
 {
-    virCheckFlags(0, NULL);
+    virCheckFlags(VIR_DOMAIN_XML_SECURE | VIR_DOMAIN_XML_INACTIVE, NULL);
     char* xml;
     virDomainDefPtr domainDef = virDomainDefNewFull(domain->name, domain->uuid, domain->id);
     xml = virDomainDefFormat(domainDef, 0);
