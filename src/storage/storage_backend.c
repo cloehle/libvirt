@@ -1987,30 +1987,30 @@ virStorageBackendVolZeroSparseFileLocal(virStorageVolDefPtr vol,
 
 
 static int
-virStorageBackendWipeExtentLocal(virStorageVolDefPtr vol,
-                                 int fd,
-                                 off_t extent_start,
-                                 off_t extent_length,
-                                 char *writebuf,
-                                 size_t writebuf_length,
-                                 size_t *bytes_wiped)
+virStorageBackendWipeLocal(virStorageVolDefPtr vol,
+                           int fd,
+                           unsigned long long wipe_len,
+                           size_t writebuf_length)
 {
     int ret = -1, written = 0;
-    off_t remaining = 0;
+    unsigned long long remaining = 0;
     size_t write_size = 0;
+    char *writebuf = NULL;
 
-    VIR_DEBUG("extent logical start: %ju len: %ju",
-              (uintmax_t)extent_start, (uintmax_t)extent_length);
+    VIR_DEBUG("wiping start: 0 len: %llu", wipe_len);
 
-    if ((ret = lseek(fd, extent_start, SEEK_SET)) < 0) {
+    if (VIR_ALLOC_N(writebuf, writebuf_length) < 0)
+        goto cleanup;
+
+    if (lseek(fd, 0, SEEK_SET) < 0) {
         virReportSystemError(errno,
-                             _("Failed to seek to position %ju in volume "
+                             _("Failed to seek to the start in volume "
                                "with path '%s'"),
-                             (uintmax_t)extent_start, vol->target.path);
+                             vol->target.path);
         goto cleanup;
     }
 
-    remaining = extent_length;
+    remaining = wipe_len;
     while (remaining > 0) {
 
         write_size = (writebuf_length < remaining) ? writebuf_length : remaining;
@@ -2024,24 +2024,23 @@ virStorageBackendWipeExtentLocal(virStorageVolDefPtr vol,
             goto cleanup;
         }
 
-        *bytes_wiped += written;
         remaining -= written;
     }
 
     if (fdatasync(fd) < 0) {
-        ret = -errno;
         virReportSystemError(errno,
                              _("cannot sync data to volume with path '%s'"),
                              vol->target.path);
         goto cleanup;
     }
 
-    VIR_DEBUG("Wrote %zu bytes to volume with path '%s'",
-              *bytes_wiped, vol->target.path);
+    VIR_DEBUG("Wrote %llu bytes to volume with path '%s'",
+              wipe_len, vol->target.path);
 
     ret = 0;
 
  cleanup:
+    VIR_FREE(writebuf);
     return ret;
 }
 
@@ -2055,8 +2054,6 @@ virStorageBackendVolWipeLocal(virConnectPtr conn ATTRIBUTE_UNUSED,
 {
     int ret = -1, fd = -1;
     struct stat st;
-    char *writebuf = NULL;
-    size_t bytes_wiped = 0;
     virCommandPtr cmd = NULL;
 
     virCheckFlags(0, -1);
@@ -2124,23 +2121,15 @@ virStorageBackendVolWipeLocal(virConnectPtr conn ATTRIBUTE_UNUSED,
         if (S_ISREG(st.st_mode) && st.st_blocks < (st.st_size / DEV_BSIZE)) {
             ret = virStorageBackendVolZeroSparseFileLocal(vol, st.st_size, fd);
         } else {
-
-            if (VIR_ALLOC_N(writebuf, st.st_blksize) < 0)
-                goto cleanup;
-
-            ret = virStorageBackendWipeExtentLocal(vol,
-                                                   fd,
-                                                   0,
-                                                   vol->target.allocation,
-                                                   writebuf,
-                                                   st.st_blksize,
-                                                   &bytes_wiped);
+            ret = virStorageBackendWipeLocal(vol,
+                                             fd,
+                                             vol->target.allocation,
+                                             st.st_blksize);
         }
     }
 
  cleanup:
     virCommandFree(cmd);
-    VIR_FREE(writebuf);
     VIR_FORCE_CLOSE(fd);
     return ret;
 }

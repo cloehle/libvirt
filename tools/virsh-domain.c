@@ -1,7 +1,7 @@
 /*
  * virsh-domain.c: Commands to manage domain
  *
- * Copyright (C) 2005, 2007-2015 Red Hat, Inc.
+ * Copyright (C) 2005, 2007-2016 Red Hat, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -63,6 +63,23 @@
 # define SA_SIGINFO 0
 #endif
 
+#define VIRSH_COMMON_OPT_DOMAIN_FULL                       \
+    VIRSH_COMMON_OPT_DOMAIN(N_("domain name, id or uuid")) \
+
+#define VIRSH_COMMON_OPT_DOMAIN_PERSISTENT             \
+    {.name = "persistent",                             \
+     .type = VSH_OT_BOOL,                              \
+     .help = N_("make live change persistent")         \
+    }                                                  \
+
+#define VIRSH_COMMON_OPT_DOMAIN_CONFIG                 \
+    VIRSH_COMMON_OPT_CONFIG(N_("affect next boot"))    \
+
+#define VIRSH_COMMON_OPT_DOMAIN_LIVE                   \
+    VIRSH_COMMON_OPT_LIVE(N_("affect running domain")) \
+
+#define VIRSH_COMMON_OPT_DOMAIN_CURRENT                   \
+    VIRSH_COMMON_OPT_CURRENT(N_("affect current domain")) \
 
 static virDomainPtr
 virshLookupDomainInternal(vshControl *ctl,
@@ -206,32 +223,12 @@ static const vshCmdInfo info_attach_device[] = {
 };
 
 static const vshCmdOptDef opts_attach_device[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("XML file")
-    },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_FILE(N_("XML file")),
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -308,11 +305,7 @@ static const vshCmdInfo info_attach_disk[] = {
 };
 
 static const vshCmdOptDef opts_attach_disk[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "source",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ | VSH_OFLAG_EMPTY_OK,
@@ -383,22 +376,10 @@ static const vshCmdOptDef opts_attach_disk[] = {
      .type = VSH_OT_BOOL,
      .help = N_("print XML document rather than attach the disk")
     },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -808,11 +789,7 @@ static const vshCmdInfo info_attach_interface[] = {
 };
 
 static const vshCmdOptDef opts_attach_interface[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "type",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -847,22 +824,10 @@ static const vshCmdOptDef opts_attach_interface[] = {
      .type = VSH_OT_STRING,
      .help = N_("control domain's outgoing traffics")
     },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = "print-xml",
      .type = VSH_OT_BOOL,
      .help = N_("print XML document rather than attach the interface")
@@ -1135,11 +1100,7 @@ static const vshCmdInfo info_autostart[] = {
 };
 
 static const vshCmdOptDef opts_autostart[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "disable",
      .type = VSH_OT_BOOL,
      .help = N_("disable autostarting")
@@ -1191,11 +1152,7 @@ static const vshCmdInfo info_blkdeviotune[] = {
 };
 
 static const vshCmdOptDef opts_blkdeviotune[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "device",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -1305,18 +1262,9 @@ static const vshCmdOptDef opts_blkdeviotune[] = {
      .type = VSH_OT_INT,
      .help = N_("I/O size in bytes")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -1534,11 +1482,7 @@ static const vshCmdInfo info_blkiotune[] = {
 };
 
 static const vshCmdOptDef opts_blkiotune[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "weight",
      .type = VSH_OT_INT,
      .help = N_("IO Weight")
@@ -1563,18 +1507,9 @@ static const vshCmdOptDef opts_blkiotune[] = {
      .type = VSH_OT_STRING,
      .help = N_("per-device bytes wrote per second, in the form of /path/to/device,write_bytes_sec,...")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -2007,11 +1942,7 @@ static const vshCmdInfo info_block_commit[] = {
 };
 
 static const vshCmdOptDef opts_block_commit[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -2227,11 +2158,7 @@ static const vshCmdInfo info_block_copy[] = {
 };
 
 static const vshCmdOptDef opts_block_copy[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -2532,11 +2459,7 @@ static const vshCmdInfo info_block_job[] = {
 };
 
 static const vshCmdOptDef opts_block_job[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -2777,11 +2700,7 @@ static const vshCmdInfo info_block_pull[] = {
 };
 
 static const vshCmdOptDef opts_block_pull[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -2916,11 +2835,7 @@ static const vshCmdInfo info_block_resize[] = {
 };
 
 static const vshCmdOptDef opts_block_resize[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -2984,11 +2899,7 @@ static const vshCmdInfo info_console[] = {
 };
 
 static const vshCmdOptDef opts_console[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "devname", /* sc_prohibit_devname */
      .type = VSH_OT_STRING,
      .help = N_("character device name")
@@ -3082,11 +2993,7 @@ static const vshCmdInfo info_domif_setlink[] = {
 };
 
 static const vshCmdOptDef opts_domif_setlink[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "interface",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -3101,10 +3008,7 @@ static const vshCmdOptDef opts_domif_setlink[] = {
      .type = VSH_OT_ALIAS,
      .help = "config"
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
     {.name = NULL}
 };
 
@@ -3269,11 +3173,7 @@ static const vshCmdInfo info_domiftune[] = {
 };
 
 static const vshCmdOptDef opts_domiftune[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "interface",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -3287,18 +3187,9 @@ static const vshCmdOptDef opts_domiftune[] = {
      .type = VSH_OT_STRING,
      .help = N_("control domain's outgoing traffics")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -3479,11 +3370,7 @@ static const vshCmdInfo info_suspend[] = {
 };
 
 static const vshCmdOptDef opts_suspend[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -3525,11 +3412,7 @@ static const vshCmdInfo info_dom_pm_suspend[] = {
 };
 
 static const vshCmdOptDef opts_dom_pm_suspend[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "target",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -3607,11 +3490,7 @@ static const vshCmdInfo info_dom_pm_wakeup[] = {
 };
 
 static const vshCmdOptDef opts_dom_pm_wakeup[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -3656,11 +3535,7 @@ static const vshCmdInfo info_undefine[] = {
 };
 
 static const vshCmdOptDef opts_undefine[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "managed-save",
      .type = VSH_OT_BOOL,
      .help = N_("remove domain managed state file")
@@ -3673,6 +3548,11 @@ static const vshCmdOptDef opts_undefine[] = {
     {.name = "remove-all-storage",
      .type = VSH_OT_BOOL,
      .help = N_("remove all associated storage volumes (use with caution)")
+    },
+    {.name = "delete-snapshots",
+     .type = VSH_OT_BOOL,
+     .help = N_("delete snapshots associated with volume(s), requires "
+                "--remove-all-storage (must be supported by storage driver)")
     },
     {.name = "wipe-storage",
      .type = VSH_OT_BOOL,
@@ -3703,11 +3583,13 @@ cmdUndefine(vshControl *ctl, const vshCmd *cmd)
     const char *name = NULL;
     /* Flags to attempt.  */
     unsigned int flags = 0;
+    unsigned int vol_flags = 0;
     /* User-requested actions.  */
     bool managed_save = vshCommandOptBool(cmd, "managed-save");
     bool snapshots_metadata = vshCommandOptBool(cmd, "snapshots-metadata");
     bool wipe_storage = vshCommandOptBool(cmd, "wipe-storage");
     bool remove_all_storage = vshCommandOptBool(cmd, "remove-all-storage");
+    bool delete_snapshots = vshCommandOptBool(cmd, "delete-snapshots");
     bool nvram = vshCommandOptBool(cmd, "nvram");
     /* Positive if these items exist.  */
     int has_managed_save = 0;
@@ -3736,6 +3618,8 @@ cmdUndefine(vshControl *ctl, const vshCmd *cmd)
     size_t j;
     virshControlPtr priv = ctl->privData;
 
+    VSH_REQUIRE_OPTION("delete-snapshots", "remove-all-storage");
+
     ignore_value(vshCommandOptStringQuiet(ctl, cmd, "storage", &vol_string));
 
     if (!(vol_string || remove_all_storage) && wipe_storage) {
@@ -3744,6 +3628,9 @@ cmdUndefine(vshControl *ctl, const vshCmd *cmd)
                    "'--remove-all-storage'"));
         return false;
     }
+
+    if (delete_snapshots)
+        vol_flags |= VIR_STORAGE_VOL_DELETE_WITH_SNAPSHOTS;
 
     if (managed_save) {
         flags |= VIR_DOMAIN_UNDEFINE_MANAGED_SAVE;
@@ -4011,7 +3898,7 @@ cmdUndefine(vshControl *ctl, const vshCmd *cmd)
             }
 
             /* delete the volume */
-            if (virStorageVolDelete(vols[i].vol, 0) < 0) {
+            if (virStorageVolDelete(vols[i].vol, vol_flags) < 0) {
                 vshError(ctl, _("Failed to remove storage volume '%s'(%s)"),
                          vols[i].target, vols[i].source);
                 ret = false;
@@ -4066,11 +3953,7 @@ static const vshCmdInfo info_start[] = {
 };
 
 static const vshCmdOptDef opts_start[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("name of the inactive domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN(N_("name of the inactive domain")),
 #ifndef WIN32
     {.name = "console",
      .type = VSH_OT_BOOL,
@@ -4245,16 +4128,8 @@ static const vshCmdInfo info_save[] = {
 };
 
 static const vshCmdOptDef opts_save[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("where to save the data")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_FILE(N_("where to save the data")),
     {.name = "bypass-cache",
      .type = VSH_OT_BOOL,
      .help = N_("avoid file system cache when saving")
@@ -4511,11 +4386,7 @@ static const vshCmdInfo info_save_image_dumpxml[] = {
 };
 
 static const vshCmdOptDef opts_save_image_dumpxml[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("saved state file to read")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("saved state file to read")),
     {.name = "security-info",
      .type = VSH_OT_BOOL,
      .help = N_("include security sensitive information in XML dump")
@@ -4564,11 +4435,7 @@ static const vshCmdInfo info_save_image_define[] = {
 };
 
 static const vshCmdOptDef opts_save_image_define[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("saved state file to modify")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("saved state file to modify")),
     {.name = "xml",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -4636,11 +4503,7 @@ static const vshCmdInfo info_save_image_edit[] = {
 };
 
 static const vshCmdOptDef opts_save_image_edit[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("saved state file to edit")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("saved state file to edit")),
     {.name = "running",
      .type = VSH_OT_BOOL,
      .help = N_("set domain to be running on restore")
@@ -4715,11 +4578,7 @@ static const vshCmdInfo info_managedsave[] = {
 };
 
 static const vshCmdOptDef opts_managedsave[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "bypass-cache",
      .type = VSH_OT_BOOL,
      .help = N_("avoid file system cache when saving")
@@ -4839,11 +4698,7 @@ static const vshCmdInfo info_managedsaveremove[] = {
 };
 
 static const vshCmdOptDef opts_managedsaveremove[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -4898,11 +4753,7 @@ static const vshCmdInfo info_schedinfo[] = {
 };
 
 static const vshCmdOptDef opts_schedinfo[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "weight",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ_OPT,
@@ -4913,18 +4764,9 @@ static const vshCmdOptDef opts_schedinfo[] = {
      .flags = VSH_OFLAG_REQ_OPT,
      .help = N_("cap for XEN_CREDIT")
     },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("get/set current scheduler info")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("get/set value to be used on next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("get/set value from running domain")
-    },
+    VIRSH_COMMON_OPT_CURRENT(N_("get/set current scheduler info")),
+    VIRSH_COMMON_OPT_CONFIG(N_("get/set value to be used on next boot")),
+    VIRSH_COMMON_OPT_LIVE(N_("get/set value from running domain")),
     {.name = "set",
      .type = VSH_OT_ARGV,
      .flags = VSH_OFLAG_NONE,
@@ -5146,11 +4988,7 @@ static const vshCmdInfo info_restore[] = {
 };
 
 static const vshCmdOptDef opts_restore[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("the state to restore")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("the state to restore")),
     {.name = "bypass-cache",
      .type = VSH_OT_BOOL,
      .help = N_("avoid file system cache when restoring")
@@ -5226,20 +5064,9 @@ static const vshCmdInfo info_dump[] = {
 };
 
 static const vshCmdOptDef opts_dump[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("where to dump the core")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("perform a live core dump if supported")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_FILE(N_("where to dump the core")),
+    VIRSH_COMMON_OPT_LIVE(N_("perform a live core dump if supported")),
     {.name = "crash",
      .type = VSH_OT_BOOL,
      .help = N_("crash the domain after core dump")
@@ -5409,11 +5236,7 @@ static const vshCmdInfo info_screenshot[] = {
 };
 
 static const vshCmdOptDef opts_screenshot[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "file",
      .type = VSH_OT_STRING,
      .help = N_("where to store the screenshot")
@@ -5556,11 +5379,7 @@ static const vshCmdInfo info_set_user_password[] = {
 };
 
 static const vshCmdOptDef opts_set_user_password[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "user",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -5624,11 +5443,7 @@ static const vshCmdInfo info_resume[] = {
 };
 
 static const vshCmdOptDef opts_resume[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -5667,11 +5482,7 @@ static const vshCmdInfo info_shutdown[] = {
 };
 
 static const vshCmdOptDef opts_shutdown[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "mode",
      .type = VSH_OT_STRING,
      .help = N_("shutdown mode: acpi|agent|initctl|signal|paravirt")
@@ -5756,11 +5567,7 @@ static const vshCmdInfo info_reboot[] = {
 };
 
 static const vshCmdOptDef opts_reboot[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "mode",
      .type = VSH_OT_STRING,
      .help = N_("shutdown mode: acpi|agent|initctl|signal|paravirt")
@@ -5840,11 +5647,7 @@ static const vshCmdInfo info_reset[] = {
 };
 
 static const vshCmdOptDef opts_reset[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -5883,11 +5686,7 @@ static const vshCmdInfo info_domjobinfo[] = {
 };
 
 static const vshCmdOptDef opts_domjobinfo[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "completed",
      .type = VSH_OT_BOOL,
      .help = N_("return statistics of a recently completed job")
@@ -6033,6 +5832,22 @@ cmdDomjobinfo(vshControl *ctl, const vshCmd *cmd)
             vshPrint(ctl, "%-17s %-.3lf %s/s\n",
                      _("Memory bandwidth:"), val, unit);
         }
+
+        if ((rc = virTypedParamsGetULLong(params, nparams,
+                                          VIR_DOMAIN_JOB_MEMORY_DIRTY_RATE,
+                                          &value)) < 0) {
+            goto save_error;
+        } else if (rc) {
+            vshPrint(ctl, "%-17s %-12llu pages/s\n", _("Dirty rate:"), value);
+        }
+
+        if ((rc = virTypedParamsGetULLong(params, nparams,
+                                          VIR_DOMAIN_JOB_MEMORY_ITERATION,
+                                          &value)) < 0) {
+            goto save_error;
+        } else if (rc) {
+            vshPrint(ctl, "%-17s %-12llu\n", _("Iteration:"), value);
+        }
     }
 
     if (info.fileTotal || info.fileRemaining || info.fileProcessed) {
@@ -6169,11 +5984,7 @@ static const vshCmdInfo info_domjobabort[] = {
 };
 
 static const vshCmdOptDef opts_domjobabort[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -6207,11 +6018,7 @@ static const vshCmdInfo info_vcpucount[] = {
 };
 
 static const vshCmdOptDef opts_vcpucount[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "maximum",
      .type = VSH_OT_BOOL,
      .help = N_("get maximum count of vcpus")
@@ -6220,18 +6027,9 @@ static const vshCmdOptDef opts_vcpucount[] = {
      .type = VSH_OT_BOOL,
      .help = N_("get number of currently active vcpus")
     },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("get value from running domain")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("get value to be used on next boot")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("get value according to current domain state")
-    },
+    VIRSH_COMMON_OPT_LIVE(N_("get value from running domain")),
+    VIRSH_COMMON_OPT_CONFIG(N_("get value to be used on next boot")),
+    VIRSH_COMMON_OPT_CURRENT(N_("get value according to current domain state")),
     {.name = "guest",
      .type = VSH_OT_BOOL,
      .help = N_("retrieve vcpu count from the guest instead of the hypervisor")
@@ -6422,11 +6220,7 @@ static const vshCmdInfo info_vcpuinfo[] = {
 };
 
 static const vshCmdOptDef opts_vcpuinfo[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "pretty",
      .type = VSH_OT_BOOL,
      .help = N_("return human readable output")
@@ -6537,11 +6331,7 @@ static const vshCmdInfo info_vcpupin[] = {
 };
 
 static const vshCmdOptDef opts_vcpupin[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "vcpu",
      .type = VSH_OT_INT,
      .help = N_("vcpu number")
@@ -6551,18 +6341,9 @@ static const vshCmdOptDef opts_vcpupin[] = {
      .flags = VSH_OFLAG_EMPTY_OK,
      .help = N_("host cpu number(s) to set, or omit option to query")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -6749,28 +6530,15 @@ static const vshCmdInfo info_emulatorpin[] = {
 };
 
 static const vshCmdOptDef opts_emulatorpin[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "cpulist",
      .type = VSH_OT_STRING,
      .flags = VSH_OFLAG_EMPTY_OK,
      .help = N_("host cpu number(s) to set, or omit option to query")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -6866,11 +6634,7 @@ static const vshCmdInfo info_setvcpus[] = {
 };
 
 static const vshCmdOptDef opts_setvcpus[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "count",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
@@ -6880,18 +6644,9 @@ static const vshCmdOptDef opts_setvcpus[] = {
      .type = VSH_OT_BOOL,
      .help = N_("set maximum limit on next boot")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = "guest",
      .type = VSH_OT_BOOL,
      .help = N_("modify cpu state in the guest")
@@ -6967,23 +6722,10 @@ static const vshCmdInfo info_iothreadinfo[] = {
     {.name = NULL}
 };
 static const vshCmdOptDef opts_iothreadinfo[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -7056,11 +6798,7 @@ static const vshCmdInfo info_iothreadpin[] = {
 };
 
 static const vshCmdOptDef opts_iothreadpin[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "iothread",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
@@ -7071,18 +6809,9 @@ static const vshCmdOptDef opts_iothreadpin[] = {
      .flags = VSH_OFLAG_REQ,
      .help = N_("host cpu number(s) to set")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -7151,28 +6880,15 @@ static const vshCmdInfo info_iothreadadd[] = {
 };
 
 static const vshCmdOptDef opts_iothreadadd[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "id",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
      .help = N_("iothread for the new IOThread")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -7229,28 +6945,15 @@ static const vshCmdInfo info_iothreaddel[] = {
 };
 
 static const vshCmdOptDef opts_iothreaddel[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "id",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
      .help = N_("iothread_id for the IOThread to delete")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -7307,11 +7010,7 @@ static const vshCmdInfo info_cpu_compare[] = {
 };
 
 static const vshCmdOptDef opts_cpu_compare[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("file containing an XML CPU description")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("file containing an XML CPU description")),
     {.name = "error",
      .type = VSH_OT_BOOL,
      .help = N_("report error if CPUs are incompatible")
@@ -7409,11 +7108,7 @@ static const vshCmdInfo info_cpu_baseline[] = {
 };
 
 static const vshCmdOptDef opts_cpu_baseline[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("file containing XML CPU descriptions")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("file containing XML CPU descriptions")),
     {.name = "features",
      .type = VSH_OT_BOOL,
      .help = N_("Show features that are part of the CPU model type")
@@ -7526,11 +7221,7 @@ static const vshCmdInfo info_cpu_stats[] = {
 };
 
 static const vshCmdOptDef opts_cpu_stats[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "total",
      .type = VSH_OT_BOOL,
      .help = N_("Show total statistics only")
@@ -7546,15 +7237,34 @@ static const vshCmdOptDef opts_cpu_stats[] = {
     {.name = NULL}
 };
 
+static void
+vshCPUStatsPrintField(vshControl *ctl,
+                      virTypedParameterPtr param)
+{
+    vshPrint(ctl, "\t%-12s ", param->field);
+    if ((STREQ(param->field, VIR_DOMAIN_CPU_STATS_CPUTIME) ||
+         STREQ(param->field, VIR_DOMAIN_CPU_STATS_VCPUTIME) ||
+         STREQ(param->field, VIR_DOMAIN_CPU_STATS_USERTIME) ||
+         STREQ(param->field, VIR_DOMAIN_CPU_STATS_SYSTEMTIME)) &&
+        param->type == VIR_TYPED_PARAM_ULLONG) {
+        vshPrint(ctl, "%9lld.%09lld seconds\n",
+                 param->value.ul / 1000000000,
+                 param->value.ul % 1000000000);
+    } else {
+        char *s = vshGetTypedParamValue(ctl, param);
+        vshPrint(ctl, "%s\n", s);
+        VIR_FREE(s);
+    }
+}
+
 static bool
 cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
 {
     virDomainPtr dom;
     virTypedParameterPtr params = NULL;
-    int pos, max_id, cpu = 0, show_count = -1, nparams = 0, stats_per_cpu;
+    int max_id, cpu = 0, show_count = -1, nparams = 0, stats_per_cpu;
     size_t i, j;
     bool show_total = false, show_per_cpu = false;
-    unsigned int flags = 0;
     bool ret = false;
     int rv = 0;
 
@@ -7593,7 +7303,7 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
         goto do_show_total;
 
     /* get number of cpus on the node */
-    if ((max_id = virDomainGetCPUStats(dom, NULL, 0, 0, 0, flags)) < 0)
+    if ((max_id = virDomainGetCPUStats(dom, NULL, 0, 0, 0, 0)) < 0)
         goto failed_stats;
     if (show_count < 0 || show_count > max_id) {
         if (show_count > max_id)
@@ -7602,7 +7312,7 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
     }
 
     /* get percpu information */
-    if ((nparams = virDomainGetCPUStats(dom, NULL, 0, 0, 1, flags)) < 0)
+    if ((nparams = virDomainGetCPUStats(dom, NULL, 0, 0, 1, 0)) < 0)
         goto failed_stats;
 
     if (!nparams) {
@@ -7618,7 +7328,7 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
     while (show_count) {
         int ncpus = MIN(show_count, 128);
 
-        if (virDomainGetCPUStats(dom, params, nparams, cpu, ncpus, flags) < 0)
+        if (virDomainGetCPUStats(dom, params, nparams, cpu, ncpus, 0) < 0)
             goto failed_stats;
 
         for (i = 0; i < ncpus; i++) {
@@ -7626,21 +7336,8 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
                 continue;
             vshPrint(ctl, "CPU%zu:\n", cpu + i);
 
-            for (j = 0; j < nparams; j++) {
-                pos = i * nparams + j;
-                vshPrint(ctl, "\t%-12s ", params[pos].field);
-                if ((STREQ(params[pos].field, VIR_DOMAIN_CPU_STATS_CPUTIME) ||
-                     STREQ(params[pos].field, VIR_DOMAIN_CPU_STATS_VCPUTIME)) &&
-                    params[j].type == VIR_TYPED_PARAM_ULLONG) {
-                    vshPrint(ctl, "%9lld.%09lld seconds\n",
-                             params[pos].value.ul / 1000000000,
-                             params[pos].value.ul % 1000000000);
-                } else {
-                    char *s = vshGetTypedParamValue(ctl, &params[pos]);
-                    vshPrint(ctl, _("%s\n"), s);
-                    VIR_FREE(s);
-                }
-            }
+            for (j = 0; j < nparams; j++)
+                vshCPUStatsPrintField(ctl, params + (i * nparams + j));
         }
         cpu += ncpus;
         show_count -= ncpus;
@@ -7655,7 +7352,7 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
 
  do_show_total:
     /* get supported num of parameter for total statistics */
-    if ((nparams = virDomainGetCPUStats(dom, NULL, 0, -1, 1, flags)) < 0)
+    if ((nparams = virDomainGetCPUStats(dom, NULL, 0, -1, 1, 0)) < 0)
         goto failed_stats;
 
     if (!nparams) {
@@ -7668,25 +7365,12 @@ cmdCPUStats(vshControl *ctl, const vshCmd *cmd)
 
     /* passing start_cpu == -1 gives us domain's total status */
     if ((stats_per_cpu = virDomainGetCPUStats(dom, params, nparams,
-                                              -1, 1, flags)) < 0)
+                                              -1, 1, 0)) < 0)
         goto failed_stats;
 
     vshPrint(ctl, _("Total:\n"));
-    for (i = 0; i < stats_per_cpu; i++) {
-        vshPrint(ctl, "\t%-12s ", params[i].field);
-        if ((STREQ(params[i].field, VIR_DOMAIN_CPU_STATS_CPUTIME) ||
-             STREQ(params[i].field, VIR_DOMAIN_CPU_STATS_USERTIME) ||
-             STREQ(params[i].field, VIR_DOMAIN_CPU_STATS_SYSTEMTIME)) &&
-            params[i].type == VIR_TYPED_PARAM_ULLONG) {
-            vshPrint(ctl, "%9lld.%09lld seconds\n",
-                     params[i].value.ul / 1000000000,
-                     params[i].value.ul % 1000000000);
-        } else {
-            char *s = vshGetTypedParamValue(ctl, &params[i]);
-            vshPrint(ctl, "%s\n", s);
-            VIR_FREE(s);
-        }
-    }
+    for (i = 0; i < stats_per_cpu; i++)
+        vshCPUStatsPrintField(ctl, params + i);
 
     ret = true;
 
@@ -7715,11 +7399,7 @@ static const vshCmdInfo info_create[] = {
 };
 
 static const vshCmdOptDef opts_create[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("file containing an XML domain description")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("file containing an XML domain description")),
 #ifndef WIN32
     {.name = "console",
      .type = VSH_OT_BOOL,
@@ -7815,11 +7495,7 @@ static const vshCmdInfo info_define[] = {
 };
 
 static const vshCmdOptDef opts_define[] = {
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("file containing an XML domain description")
-    },
+    VIRSH_COMMON_OPT_FILE(N_("file containing an XML domain description")),
     {.name = "validate",
      .type = VSH_OT_BOOL,
      .help = N_("validate the XML against the schema")
@@ -7877,11 +7553,7 @@ static const vshCmdInfo info_destroy[] = {
 };
 
 static const vshCmdOptDef opts_destroy[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "graceful",
      .type = VSH_OT_BOOL,
      .help = N_("terminate gracefully")
@@ -7934,23 +7606,10 @@ static const vshCmdInfo info_desc[] = {
 };
 
 static const vshCmdOptDef opts_desc[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get running state")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get persistent configuration")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get current state configuration")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_LIVE(N_("modify/get running state")),
+    VIRSH_COMMON_OPT_CONFIG(N_("modify/get persistent configuration")),
+    VIRSH_COMMON_OPT_CURRENT(N_("modify/get current state configuration")),
     {.name = "title",
      .type = VSH_OT_BOOL,
      .help = N_("modify/get the title instead of description")
@@ -8113,28 +7772,15 @@ static const vshCmdInfo info_metadata[] = {
 };
 
 static const vshCmdOptDef opts_metadata[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "uri",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
      .help = N_("URI of the namespace")
     },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get running state")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get persistent configuration")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("modify/get current state configuration")
-    },
+    VIRSH_COMMON_OPT_LIVE(N_("modify/get running state")),
+    VIRSH_COMMON_OPT_CONFIG(N_("modify/get persistent configuration")),
+    VIRSH_COMMON_OPT_CURRENT(N_("modify/get current state configuration")),
     {.name = "edit",
      .type = VSH_OT_BOOL,
      .help = N_("use an editor to change the metadata")
@@ -8272,11 +7918,7 @@ static const vshCmdInfo info_inject_nmi[] = {
 };
 
 static const vshCmdOptDef opts_inject_nmi[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -8310,11 +7952,7 @@ static const vshCmdInfo info_send_key[] = {
 };
 
 static const vshCmdOptDef opts_send_key[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "codeset",
      .type = VSH_OT_STRING,
      .flags = VSH_OFLAG_REQ_OPT,
@@ -8410,11 +8048,7 @@ static const vshCmdInfo info_send_process_signal[] = {
 };
 
 static const vshCmdOptDef opts_send_process_signal[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "pid",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -8519,11 +8153,7 @@ static const vshCmdInfo info_setmem[] = {
 };
 
 static const vshCmdOptDef opts_setmem[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "kilobytes",
      .type = VSH_OT_ALIAS,
      .help = "size"
@@ -8533,18 +8163,9 @@ static const vshCmdOptDef opts_setmem[] = {
      .flags = VSH_OFLAG_REQ,
      .help = N_("new memory size, as scaled integer (default KiB)")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -8613,11 +8234,7 @@ static const vshCmdInfo info_setmaxmem[] = {
 };
 
 static const vshCmdOptDef opts_setmaxmem[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "kilobytes",
      .type = VSH_OT_ALIAS,
      .help = "size"
@@ -8627,18 +8244,9 @@ static const vshCmdOptDef opts_setmaxmem[] = {
      .flags = VSH_OFLAG_REQ,
      .help = N_("new maximum memory size, as scaled integer (default KiB)")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -8714,11 +8322,7 @@ static const vshCmdInfo info_memtune[] = {
 };
 
 static const vshCmdOptDef opts_memtune[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "hard-limit",
      .type = VSH_OT_INT,
      .help = N_("Max memory, as scaled integer (default KiB)")
@@ -8735,18 +8339,9 @@ static const vshCmdOptDef opts_memtune[] = {
      .type = VSH_OT_INT,
      .help = N_("Min guaranteed memory, as scaled integer (default KiB)")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -8904,11 +8499,7 @@ static const vshCmdInfo info_numatune[] = {
 };
 
 static const vshCmdOptDef opts_numatune[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "mode",
      .type = VSH_OT_STRING,
      .help = N_("NUMA mode, one of strict, preferred and interleave \n"
@@ -8918,18 +8509,9 @@ static const vshCmdOptDef opts_numatune[] = {
      .type = VSH_OT_STRING,
      .help = N_("NUMA node selections to set")
     },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -9052,11 +8634,7 @@ static const vshCmdInfo info_qemu_monitor_command[] = {
 };
 
 static const vshCmdOptDef opts_qemu_monitor_command[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "hmp",
      .type = VSH_OT_BOOL,
      .help = N_("command is in human monitor protocol")
@@ -9145,14 +8723,19 @@ struct virshQemuEventData {
     vshControl *ctl;
     bool loop;
     bool pretty;
+    bool timestamp;
     int count;
 };
 typedef struct virshQemuEventData virshQemuEventData;
 
 static void
-virshEventPrint(virConnectPtr conn ATTRIBUTE_UNUSED, virDomainPtr dom,
-                const char *event, long long seconds, unsigned int micros,
-                const char *details, void *opaque)
+virshEventQemuPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
+                    virDomainPtr dom,
+                    const char *event,
+                    long long seconds,
+                    unsigned int micros,
+                    const char *details,
+                    void *opaque)
 {
     virshQemuEventData *data = opaque;
     virJSONValuePtr pretty = NULL;
@@ -9165,8 +8748,20 @@ virshEventPrint(virConnectPtr conn ATTRIBUTE_UNUSED, virDomainPtr dom,
         if (pretty && (str = virJSONValueToString(pretty, true)))
             details = str;
     }
-    vshPrint(data->ctl, "event %s at %lld.%06u for domain %s: %s\n",
-             event, seconds, micros, virDomainGetName(dom), NULLSTR(details));
+
+    if (data->timestamp) {
+        char timestamp[VIR_TIME_STRING_BUFLEN];
+
+        if (virTimeStringNowRaw(timestamp) < 0)
+            timestamp[0] = '\0';
+
+        vshPrint(data->ctl, "%s: event %s for domain %s: %s\n",
+                 timestamp, event, virDomainGetName(dom), NULLSTR(details));
+    } else {
+        vshPrint(data->ctl, "event %s at %lld.%06u for domain %s: %s\n",
+                 event, seconds, micros, virDomainGetName(dom), NULLSTR(details));
+    }
+
     data->count++;
     if (!data->loop)
         vshEventDone(data->ctl);
@@ -9213,6 +8808,10 @@ static const vshCmdOptDef opts_qemu_monitor_event[] = {
      .type = VSH_OT_BOOL,
      .help = N_("treat event case-insensitively")
     },
+    {.name = "timestamp",
+     .type = VSH_OT_BOOL,
+     .help = N_("show timestamp for each printed event")
+    },
     {.name = NULL}
 };
 
@@ -9236,6 +8835,7 @@ cmdQemuMonitorEvent(vshControl *ctl, const vshCmd *cmd)
     data.ctl = ctl;
     data.loop = vshCommandOptBool(cmd, "loop");
     data.pretty = vshCommandOptBool(cmd, "pretty");
+    data.timestamp = vshCommandOptBool(cmd, "timestamp");
     data.count = 0;
     if (vshCommandOptTimeoutToMs(ctl, cmd, &timeout) < 0)
         return false;
@@ -9249,7 +8849,7 @@ cmdQemuMonitorEvent(vshControl *ctl, const vshCmd *cmd)
 
     if ((eventId = virConnectDomainQemuMonitorEventRegister(priv->conn, dom,
                                                             event,
-                                                            virshEventPrint,
+                                                            virshEventQemuPrint,
                                                             &data, NULL,
                                                             flags)) < 0)
         goto cleanup;
@@ -9342,11 +8942,7 @@ static const vshCmdInfo info_qemu_agent_command[] = {
 };
 
 static const vshCmdOptDef opts_qemu_agent_command[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "timeout",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ_OPT,
@@ -9463,17 +9059,13 @@ static const vshCmdInfo info_lxc_enter_namespace[] = {
      .data = N_("LXC Guest Enter Namespace")
     },
     {.name = "desc",
-     .data = N_("Run an arbitrary lxc guest enter namespace; use at your own risk")
+     .data = N_("Run an arbitrary command in a lxc guest namespace; use at your own risk")
     },
     {.name = NULL}
 };
 
 static const vshCmdOptDef opts_lxc_enter_namespace[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "noseclabel",
      .type = VSH_OT_BOOL,
      .help = N_("Do not change process security label")
@@ -9481,7 +9073,7 @@ static const vshCmdOptDef opts_lxc_enter_namespace[] = {
     {.name = "cmd",
      .type = VSH_OT_ARGV,
      .flags = VSH_OFLAG_REQ,
-     .help = N_("namespace")
+     .help = N_("command to run")
     },
     {.name = NULL}
 };
@@ -9612,11 +9204,7 @@ static const vshCmdInfo info_dumpxml[] = {
 };
 
 static const vshCmdOptDef opts_dumpxml[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "inactive",
      .type = VSH_OT_BOOL,
      .help = N_("show inactive defined XML")
@@ -9800,11 +9388,7 @@ static const vshCmdInfo info_domname[] = {
 };
 
 static const vshCmdOptDef opts_domname[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN(N_("domain id or uuid")),
     {.name = NULL}
 };
 
@@ -9836,11 +9420,7 @@ static const vshCmdInfo info_domrename[] = {
 };
 
 static const vshCmdOptDef opts_domrename[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "new-name",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -9887,11 +9467,7 @@ static const vshCmdInfo info_domid[] = {
 };
 
 static const vshCmdOptDef opts_domid[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN(N_("domain name or uuid")),
     {.name = NULL}
 };
 
@@ -9928,11 +9504,7 @@ static const vshCmdInfo info_domuuid[] = {
 };
 
 static const vshCmdOptDef opts_domuuid[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain id or name")
-    },
+    VIRSH_COMMON_OPT_DOMAIN(N_("domain id or name")),
     {.name = NULL}
 };
 
@@ -9969,20 +9541,13 @@ static const vshCmdInfo info_migrate[] = {
 };
 
 static const vshCmdOptDef opts_migrate[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "desturi",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
      .help = N_("connection URI of the destination host as seen from the client(normal migration) or source(p2p migration)")
     },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("live migration")
-    },
+    VIRSH_COMMON_OPT_LIVE(N_("live migration")),
     {.name = "offline",
      .type = VSH_OT_BOOL,
      .help = N_("offline migration")
@@ -10339,11 +9904,7 @@ static const vshCmdInfo info_migrate_setmaxdowntime[] = {
 };
 
 static const vshCmdOptDef opts_migrate_setmaxdowntime[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "downtime",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
@@ -10394,11 +9955,7 @@ static const vshCmdInfo info_migrate_compcache[] = {
 };
 
 static const vshCmdOptDef opts_migrate_compcache[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "size",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ_OPT,
@@ -10455,11 +10012,7 @@ static const vshCmdInfo info_migrate_setspeed[] = {
 };
 
 static const vshCmdOptDef opts_migrate_setspeed[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "bandwidth",
      .type = VSH_OT_INT,
      .flags = VSH_OFLAG_REQ,
@@ -10505,11 +10058,7 @@ static const vshCmdInfo info_migrate_getspeed[] = {
 };
 
 static const vshCmdOptDef opts_migrate_getspeed[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -10550,11 +10099,7 @@ static const vshCmdInfo info_domdisplay[] = {
 };
 
 static const vshCmdOptDef opts_domdisplay[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "include-password",
      .type = VSH_OT_BOOL,
      .help = N_("includes the password into the connection URI if available")
@@ -10773,11 +10318,7 @@ static const vshCmdInfo info_vncdisplay[] = {
 };
 
 static const vshCmdOptDef opts_vncdisplay[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -10858,11 +10399,7 @@ static const vshCmdInfo info_ttyconsole[] = {
 };
 
 static const vshCmdOptDef opts_ttyconsole[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -10918,11 +10455,7 @@ static const vshCmdInfo info_domhostname[] = {
 };
 
 static const vshCmdOptDef opts_domhostname[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 
@@ -11081,32 +10614,12 @@ static const vshCmdInfo info_detach_device[] = {
 };
 
 static const vshCmdOptDef opts_detach_device[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("XML file")
-    },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_FILE(N_("XML file")),
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -11182,32 +10695,12 @@ static const vshCmdInfo info_update_device[] = {
 };
 
 static const vshCmdOptDef opts_update_device[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
-    {.name = "file",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("XML file")
-    },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
+    VIRSH_COMMON_OPT_FILE(N_("XML file")),
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = "force",
      .type = VSH_OT_BOOL,
      .help = N_("force device update")
@@ -11284,11 +10777,7 @@ static const vshCmdInfo info_detach_interface[] = {
 };
 
 static const vshCmdOptDef opts_detach_interface[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "type",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -11298,22 +10787,10 @@ static const vshCmdOptDef opts_detach_interface[] = {
      .type = VSH_OT_STRING,
      .help = N_("MAC address")
     },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -11571,6 +11048,7 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
     char *device_type = NULL;
     char *ret = NULL;
     char *startupPolicy = NULL;
+    char *source_path = NULL;
 
     if (!disk_node)
         return NULL;
@@ -11627,7 +11105,13 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
     }
 
     if (source) {
-        if (type == VIRSH_UPDATE_DISK_XML_INSERT) {
+        if (!(source_path = virXMLPropString(source, "file")) &&
+            !(source_path = virXMLPropString(source, "dev")) &&
+            !(source_path = virXMLPropString(source, "dir")) &&
+            !(source_path = virXMLPropString(source, "pool")))
+            source_path = virXMLPropString(source, "name");
+
+        if (source_path && type == VIRSH_UPDATE_DISK_XML_INSERT) {
             vshError(NULL, _("The disk device '%s' already has media"), target);
             goto cleanup;
         }
@@ -11686,6 +11170,7 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
  cleanup:
     VIR_FREE(device_type);
     VIR_FREE(startupPolicy);
+    VIR_FREE(source_path);
     return ret;
 }
 
@@ -11704,32 +11189,16 @@ static const vshCmdInfo info_detach_disk[] = {
 };
 
 static const vshCmdOptDef opts_detach_disk[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "target",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
      .help = N_("target of disk device")
     },
-    {.name = "persistent",
-     .type = VSH_OT_BOOL,
-     .help = N_("make live change persistent")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect next boot")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect running domain")
-    },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("affect current domain")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_PERSISTENT,
+    VIRSH_COMMON_OPT_DOMAIN_CONFIG,
+    VIRSH_COMMON_OPT_DOMAIN_LIVE,
+    VIRSH_COMMON_OPT_DOMAIN_CURRENT,
     {.name = NULL}
 };
 
@@ -11820,11 +11289,7 @@ static const vshCmdInfo info_edit[] = {
 };
 
 static const vshCmdOptDef opts_edit[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "skip-validate",
      .type = VSH_OT_BOOL,
      .help = N_("skip validation of the XML against the schema")
@@ -12121,25 +11586,64 @@ struct virshDomEventData {
     vshControl *ctl;
     bool loop;
     int *count;
+    bool timestamp;
     vshEventCallback *cb;
     int id;
 };
 typedef struct virshDomEventData virshDomEventData;
+
+/**
+ * virshEventPrint:
+ *
+ * @data: opaque data passed to all event callbacks
+ * @buf: string buffer describing the event
+ *
+ * Print the event description found in @buf and update virshDomEventData.
+ *
+ * This function resets @buf and frees all memory consumed by its content.
+ */
+static void
+virshEventPrint(virshDomEventData *data,
+                virBufferPtr buf)
+{
+    char *msg;
+
+    if (!(msg = virBufferContentAndReset(buf)))
+        return;
+
+    if (!data->loop && *data->count)
+        goto cleanup;
+
+    if (data->timestamp) {
+        char timestamp[VIR_TIME_STRING_BUFLEN];
+
+        if (virTimeStringNowRaw(timestamp) < 0)
+            timestamp[0] = '\0';
+
+        vshPrint(data->ctl, "%s: %s", timestamp, msg);
+    } else {
+        vshPrint(data->ctl, "%s", msg);
+    }
+
+    (*data->count)++;
+    if (!data->loop)
+        vshEventDone(data->ctl);
+
+ cleanup:
+    VIR_FREE(msg);
+}
 
 static void
 virshEventGenericPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                        virDomainPtr dom,
                        void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event '%s' for domain %s\n"),
-             data->cb->name, virDomainGetName(dom));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event '%s' for domain %s\n"),
+                      ((virshDomEventData *) opaque)->cb->name,
+                      virDomainGetName(dom));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12149,16 +11653,13 @@ virshEventLifecyclePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                          int detail,
                          void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'lifecycle' for domain %s: %s %s\n"),
-             virDomainGetName(dom), virshDomainEventToString(event),
-             virshDomainEventDetailToString(event, detail));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'lifecycle' for domain %s: %s %s\n"),
+                      virDomainGetName(dom),
+                      virshDomainEventToString(event),
+                      virshDomainEventDetailToString(event, detail));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12167,15 +11668,12 @@ virshEventRTCChangePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                          long long utcoffset,
                          void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'rtc-change' for domain %s: %lld\n"),
-             virDomainGetName(dom), utcoffset);
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'rtc-change' for domain %s: %lld\n"),
+                      virDomainGetName(dom),
+                      utcoffset);
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12184,15 +11682,12 @@ virshEventWatchdogPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                         int action,
                         void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'watchdog' for domain %s: %s\n"),
-             virDomainGetName(dom), virshDomainEventWatchdogToString(action));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'watchdog' for domain %s: %s\n"),
+                      virDomainGetName(dom),
+                      virshDomainEventWatchdogToString(action));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12203,16 +11698,14 @@ virshEventIOErrorPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                        int action,
                        void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'io-error' for domain %s: %s (%s) %s\n"),
-             virDomainGetName(dom), srcPath, devAlias,
-             virshDomainEventIOErrorToString(action));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'io-error' for domain %s: %s (%s) %s\n"),
+                      virDomainGetName(dom),
+                      srcPath,
+                      devAlias,
+                      virshDomainEventIOErrorToString(action));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12225,26 +11718,26 @@ virshEventGraphicsPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                         const virDomainEventGraphicsSubject *subject,
                         void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
     size_t i;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'graphics' for domain %s: "
-                          "%s local[%s %s %s] remote[%s %s %s] %s"),
-             virDomainGetName(dom), virshGraphicsPhaseToString(phase),
-             virshGraphicsAddressToString(local->family),
-             local->node, local->service,
-             virshGraphicsAddressToString(remote->family),
-             remote->node, remote->service,
-             authScheme);
-    for (i = 0; i < subject->nidentity; i++)
-        vshPrint(data->ctl, " %s=%s", subject->identities[i].type,
-                 subject->identities[i].name);
-    vshPrint(data->ctl, "\n");
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'graphics' for domain %s: "
+                              "%s local[%s %s %s] remote[%s %s %s] %s\n"),
+                      virDomainGetName(dom),
+                      virshGraphicsPhaseToString(phase),
+                      virshGraphicsAddressToString(local->family),
+                      local->node,
+                      local->service,
+                      virshGraphicsAddressToString(remote->family),
+                      remote->node,
+                      remote->service,
+                      authScheme);
+    for (i = 0; i < subject->nidentity; i++) {
+        virBufferAsprintf(&buf, "\t%s=%s\n",
+                          subject->identities[i].type,
+                          subject->identities[i].name);
+    }
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12256,17 +11749,16 @@ virshEventIOErrorReasonPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                              const char *reason,
                              void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event 'io-error-reason' for domain %s: "
-                          "%s (%s) %s due to %s\n"),
-             virDomainGetName(dom), srcPath, devAlias,
-             virshDomainEventIOErrorToString(action), reason);
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'io-error-reason' for domain %s: "
+                              "%s (%s) %s due to %s\n"),
+                      virDomainGetName(dom),
+                      srcPath,
+                      devAlias,
+                      virshDomainEventIOErrorToString(action),
+                      reason);
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12277,17 +11769,15 @@ virshEventBlockJobPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                         int status,
                         void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl, _("event '%s' for domain %s: %s for %s %s\n"),
-             data->cb->name, virDomainGetName(dom),
-             virshDomainBlockJobToString(type),
-             disk, virshDomainBlockJobStatusToString(status));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event '%s' for domain %s: %s for %s %s\n"),
+                      ((virshDomEventData *) opaque)->cb->name,
+                      virDomainGetName(dom),
+                      virshDomainBlockJobToString(type),
+                      disk,
+                      virshDomainBlockJobStatusToString(status));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12299,17 +11789,16 @@ virshEventDiskChangePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                           int reason,
                           void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'disk-change' for domain %s disk %s: %s -> %s: %s\n"),
-             virDomainGetName(dom), alias, NULLSTR(oldSrc), NULLSTR(newSrc),
-             virshDomainEventDiskChangeToString(reason));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'disk-change' for domain %s disk %s: "
+                              "%s -> %s: %s\n"),
+                      virDomainGetName(dom),
+                      alias,
+                      NULLSTR(oldSrc),
+                      NULLSTR(newSrc),
+                      virshDomainEventDiskChangeToString(reason));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12319,17 +11808,13 @@ virshEventTrayChangePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                           int reason,
                           void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'tray-change' for domain %s disk %s: %s\n"),
-             virDomainGetName(dom), alias,
-             virshDomainEventTrayChangeToString(reason));
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'tray-change' for domain %s disk %s: %s\n"),
+                      virDomainGetName(dom),
+                      alias,
+                      virshDomainEventTrayChangeToString(reason));
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12349,16 +11834,12 @@ virshEventBalloonChangePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                              unsigned long long actual,
                              void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'balloon-change' for domain %s: %lluKiB\n"),
-             virDomainGetName(dom), actual);
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'balloon-change' for domain %s: %lluKiB\n"),
+                      virDomainGetName(dom),
+                      actual);
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12367,16 +11848,12 @@ virshEventDeviceRemovedPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                              const char *alias,
                              void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'device-removed' for domain %s: %s\n"),
-             virDomainGetName(dom), alias);
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'device-removed' for domain %s: %s\n"),
+                      virDomainGetName(dom),
+                      alias);
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12385,16 +11862,12 @@ virshEventDeviceAddedPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                            const char *alias,
                            void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'device-added' for domain %s: %s\n"),
-             virDomainGetName(dom), alias);
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virBufferAsprintf(&buf, _("event 'device-added' for domain %s: %s\n"),
+                      virDomainGetName(dom),
+                      alias);
+    virshEventPrint(opaque, &buf);
 }
 
 static void
@@ -12404,28 +11877,20 @@ virshEventTunablePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                        int nparams,
                        void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
     size_t i;
-    char *value = NULL;
+    char *value;
 
-    if (!data->loop && *data->count)
-        return;
-
-    vshPrint(data->ctl,
-             _("event 'tunable' for domain %s:\n"),
-             virDomainGetName(dom));
-
+    virBufferAsprintf(&buf, _("event 'tunable' for domain %s:\n"),
+                      virDomainGetName(dom));
     for (i = 0; i < nparams; i++) {
         value = virTypedParameterToString(&params[i]);
         if (value) {
-            vshPrint(data->ctl, _("\t%s: %s\n"), params[i].field, value);
+            virBufferAsprintf(&buf, "\t%s: %s\n", params[i].field, value);
             VIR_FREE(value);
         }
     }
-
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+    virshEventPrint(opaque, &buf);
 }
 
 VIR_ENUM_DECL(virshEventAgentLifecycleState)
@@ -12450,19 +11915,30 @@ virshEventAgentLifecyclePrint(virConnectPtr conn ATTRIBUTE_UNUSED,
                               int reason,
                               void *opaque)
 {
-    virshDomEventData *data = opaque;
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
 
-    if (!data->loop && *data->count)
-        return;
-    vshPrint(data->ctl,
-             _("event 'agent-lifecycle' for domain %s: state: '%s' reason: '%s'\n"),
-             virDomainGetName(dom),
-             UNKNOWNSTR(virshEventAgentLifecycleStateTypeToString(state)),
-             UNKNOWNSTR(virshEventAgentLifecycleReasonTypeToString(reason)));
+    virBufferAsprintf(&buf, _("event 'agent-lifecycle' for domain %s: state: "
+                              "'%s' reason: '%s'\n"),
+                      virDomainGetName(dom),
+                      UNKNOWNSTR(virshEventAgentLifecycleStateTypeToString(state)),
+                      UNKNOWNSTR(virshEventAgentLifecycleReasonTypeToString(reason)));
+    virshEventPrint(opaque, &buf);
+}
 
-    (*data->count)++;
-    if (!data->loop)
-        vshEventDone(data->ctl);
+static void
+virshEventMigrationIterationPrint(virConnectPtr conn ATTRIBUTE_UNUSED,
+                                  virDomainPtr dom,
+                                  int iteration,
+                                  void *opaque)
+{
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
+
+    virBufferAsprintf(&buf, _("event 'migration-iteration' for domain %s: "
+                              "iteration: '%d'\n"),
+                      virDomainGetName(dom),
+                      iteration);
+
+    virshEventPrint(opaque, &buf);
 }
 
 static vshEventCallback vshEventCallbacks[] = {
@@ -12504,6 +11980,8 @@ static vshEventCallback vshEventCallbacks[] = {
       VIR_DOMAIN_EVENT_CALLBACK(virshEventAgentLifecyclePrint), },
     { "device-added",
       VIR_DOMAIN_EVENT_CALLBACK(virshEventDeviceAddedPrint), },
+    { "migration-iteration",
+      VIR_DOMAIN_EVENT_CALLBACK(virshEventMigrationIterationPrint), },
 };
 verify(VIR_DOMAIN_EVENT_ID_LAST == ARRAY_CARDINALITY(vshEventCallbacks));
 
@@ -12542,6 +12020,10 @@ static const vshCmdOptDef opts_event[] = {
      .type = VSH_OT_BOOL,
      .help = N_("list valid event types")
     },
+    {.name = "timestamp",
+     .type = VSH_OT_BOOL,
+     .help = N_("show timestamp for each printed event")
+    },
     {.name = NULL}
 };
 
@@ -12557,6 +12039,7 @@ cmdEvent(vshControl *ctl, const vshCmd *cmd)
     int event = -1;
     bool all = vshCommandOptBool(cmd, "all");
     bool loop = vshCommandOptBool(cmd, "loop");
+    bool timestamp = vshCommandOptBool(cmd, "timestamp");
     int count = 0;
     virshControlPtr priv = ctl->privData;
 
@@ -12589,6 +12072,7 @@ cmdEvent(vshControl *ctl, const vshCmd *cmd)
             data[i].ctl = ctl;
             data[i].loop = loop;
             data[i].count = &count;
+            data[i].timestamp = timestamp;
             data[i].cb = &vshEventCallbacks[i];
             data[i].id = -1;
         }
@@ -12598,6 +12082,7 @@ cmdEvent(vshControl *ctl, const vshCmd *cmd)
         data[0].ctl = ctl;
         data[0].loop = vshCommandOptBool(cmd, "loop");
         data[0].count = &count;
+        data[0].timestamp = timestamp;
         data[0].cb = &vshEventCallbacks[event];
         data[0].id = -1;
     }
@@ -12671,11 +12156,7 @@ static const vshCmdInfo info_change_media[] = {
 };
 
 static const vshCmdOptDef opts_change_media[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "path",
      .type = VSH_OT_DATA,
      .flags = VSH_OFLAG_REQ,
@@ -12697,19 +12178,12 @@ static const vshCmdOptDef opts_change_media[] = {
      .type = VSH_OT_BOOL,
      .help = N_("Update the media")
     },
-    {.name = "current",
-     .type = VSH_OT_BOOL,
-     .help = N_("can be either or both of --live and --config, "
-                "depends on implementation of hypervisor driver")
-    },
-    {.name = "live",
-     .type = VSH_OT_BOOL,
-     .help = N_("alter live configuration of running domain")
-    },
-    {.name = "config",
-     .type = VSH_OT_BOOL,
-     .help = N_("alter persistent configuration, effect observed on next boot")
-    },
+    VIRSH_COMMON_OPT_CURRENT(N_("can be either or both of --live and "
+                                "--config, depends on implementation "
+                                "hypervisor driver")),
+    VIRSH_COMMON_OPT_LIVE(N_("alter live configuration of running domain")),
+    VIRSH_COMMON_OPT_CONFIG(N_("alter persistent configuration, effect "
+                               "observed on next boot")),
     {.name = "force",
      .type = VSH_OT_BOOL,
      .help = N_("force media changing")
@@ -12843,11 +12317,7 @@ static const vshCmdInfo info_domfstrim[] = {
 };
 
 static const vshCmdOptDef opts_domfstrim[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "minimum",
      .type = VSH_OT_INT,
      .help = N_("Just a hint to ignore contiguous "
@@ -12900,11 +12370,7 @@ static const vshCmdInfo info_domfsfreeze[] = {
 };
 
 static const vshCmdOptDef opts_domfsfreeze[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "mountpoint",
      .type = VSH_OT_ARGV,
      .help = N_("mountpoint path to be frozen")
@@ -12957,11 +12423,7 @@ static const vshCmdInfo info_domfsthaw[] = {
 };
 
 static const vshCmdOptDef opts_domfsthaw[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = "mountpoint",
      .type = VSH_OT_ARGV,
      .help = N_("mountpoint path to be thawed")
@@ -13014,11 +12476,7 @@ static const vshCmdInfo info_domfsinfo[] = {
 };
 
 static const vshCmdOptDef opts_domfsinfo[] = {
-    {.name = "domain",
-     .type = VSH_OT_DATA,
-     .flags = VSH_OFLAG_REQ,
-     .help = N_("domain name, id or uuid")
-    },
+    VIRSH_COMMON_OPT_DOMAIN_FULL,
     {.name = NULL}
 };
 

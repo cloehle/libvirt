@@ -38,26 +38,8 @@
 
 %#include <libvirt/libvirt.h>
 %#include "internal.h"
+%#include "virxdrdefs.h"
 %#include <arpa/inet.h>
-
-/* cygwin's xdr implementation defines xdr_u_int64_t instead of xdr_uint64_t
- * and lacks IXDR_PUT_INT32 and IXDR_GET_INT32
- */
-%#ifdef HAVE_XDR_U_INT64_T
-%# define xdr_uint64_t xdr_u_int64_t
-%#endif
-%#ifndef IXDR_PUT_INT32
-%# define IXDR_PUT_INT32 IXDR_PUT_LONG
-%#endif
-%#ifndef IXDR_GET_INT32
-%# define IXDR_GET_INT32 IXDR_GET_LONG
-%#endif
-%#ifndef IXDR_PUT_U_INT32
-%# define IXDR_PUT_U_INT32 IXDR_PUT_U_LONG
-%#endif
-%#ifndef IXDR_GET_U_INT32
-%# define IXDR_GET_U_INT32 IXDR_GET_U_LONG
-%#endif
 
 /*----- Data types. -----*/
 
@@ -3240,6 +3222,12 @@ struct remote_domain_rename_ret {
     int retcode;
 };
 
+struct remote_domain_event_callback_migration_iteration_msg {
+    int callbackID;
+    remote_nonnull_domain dom;
+    int iteration;
+};
+
 /*----- Protocol. -----*/
 
 /* Define the program number, protocol version and procedure numbers here. */
@@ -5712,5 +5700,11 @@ enum remote_procedure {
      * @acl: domain:write
      * @acl: domain:save
      */
-    REMOTE_PROC_DOMAIN_RENAME = 358
+    REMOTE_PROC_DOMAIN_RENAME = 358,
+
+    /**
+     * @generate: both
+     * @acl: none
+     */
+    REMOTE_PROC_DOMAIN_EVENT_CALLBACK_MIGRATION_ITERATION = 359
 };

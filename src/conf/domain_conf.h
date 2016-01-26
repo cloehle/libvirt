@@ -1177,6 +1177,7 @@ struct _virDomainChrSourceDef {
         /* no <source> for null, vc, stdio */
         struct {
             char *path;
+            int append; /* enum virTristateSwitch */
         } file; /* pty, file, pipe, or device */
         struct {
             char *master;
@@ -1635,6 +1636,7 @@ struct _virDomainMemballoonDef {
     int model;
     virDomainDeviceInfo info;
     int period; /* seconds between collections */
+    int autodeflate; /* enum virTristateSwitch */
 };
 
 struct _virDomainNVRAMDef {
@@ -2421,6 +2423,9 @@ struct _virDomainObj {
     void (*privateDataFreeFunc)(void *);
 
     int taint;
+
+    unsigned long long original_memlock; /* Original RLIMIT_MEMLOCK, zero if no
+                                          * restore will be required later */
 };
 
 typedef bool (*virDomainObjListACLFilter)(virConnectPtr conn,
@@ -2436,12 +2441,14 @@ typedef virDomainXMLOption *virDomainXMLOptionPtr;
  * overall domain defaults.  */
 typedef int (*virDomainDefPostParseCallback)(virDomainDefPtr def,
                                              virCapsPtr caps,
+                                             unsigned int parseFlags,
                                              void *opaque);
 /* Called once per device, for adjusting per-device settings while
  * leaving the overall domain otherwise unchanged.  */
 typedef int (*virDomainDeviceDefPostParseCallback)(virDomainDeviceDefPtr dev,
                                                    const virDomainDef *def,
                                                    virCapsPtr caps,
+                                                   unsigned int parseFlags,
                                                    void *opaque);
 
 typedef struct _virDomainDefParserConfig virDomainDefParserConfig;
@@ -3084,6 +3091,8 @@ VIR_ENUM_DECL(virDomainCpuPlacementMode)
 
 VIR_ENUM_DECL(virDomainStartupPolicy)
 
+int
+virDomainDefAddUSBController(virDomainDefPtr def, int idx, int model);
 int
 virDomainDefMaybeAddController(virDomainDefPtr def,
                                int type,

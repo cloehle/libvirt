@@ -1,7 +1,7 @@
 /*
  * qemu_capabilities.c: QEMU capabilities generation
  *
- * Copyright (C) 2006-2015 Red Hat, Inc.
+ * Copyright (C) 2006-2016 Red Hat, Inc.
  * Copyright (C) 2006 Daniel P. Berrange
  *
  * This library is free software; you can redistribute it and/or
@@ -308,6 +308,12 @@ VIR_ENUM_IMPL(virQEMUCaps, QEMU_CAPS_LAST,
 
               "virtio-tablet", /* 205 */
               "virtio-input-host",
+              "chardev-file-append",
+              "ich9-disable-s3",
+              "ich9-disable-s4",
+
+              "vserport-change-event", /* 210 */
+              "virtio-balloon-pci.deflate-on-oom",
     );
 
 
@@ -1479,6 +1485,7 @@ struct virQEMUCapsStringFlags virQEMUCapsEvents[] = {
     { "SPICE_MIGRATE_COMPLETED", QEMU_CAPS_SEAMLESS_MIGRATION },
     { "DEVICE_DELETED", QEMU_CAPS_DEVICE_DEL_EVENT },
     { "MIGRATION", QEMU_CAPS_MIGRATION_EVENT },
+    { "VSERPORT_CHANGE", QEMU_CAPS_VSERPORT_CHANGE },
 };
 
 struct virQEMUCapsStringFlags virQEMUCapsObjectTypes[] = {
@@ -1562,6 +1569,10 @@ struct virQEMUCapsStringFlags virQEMUCapsObjectTypes[] = {
     { "virtio-input-host-pci", QEMU_CAPS_VIRTIO_INPUT_HOST },
 };
 
+static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsVirtioBalloon[] = {
+    { "deflate-on-oom", QEMU_CAPS_VIRTIO_BALLOON_AUTODEFLATE },
+};
+
 static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsVirtioBlk[] = {
     { "multifunction", QEMU_CAPS_PCI_MULTIFUNCTION },
     { "bootindex", QEMU_CAPS_BOOTINDEX },
@@ -1595,9 +1606,9 @@ static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsIDEDrive[] = {
     { "wwn", QEMU_CAPS_IDE_DRIVE_WWN },
 };
 
-static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsPixx4PM[] = {
-    { "disable_s3", QEMU_CAPS_DISABLE_S3 },
-    { "disable_s4", QEMU_CAPS_DISABLE_S4 },
+static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsPiix4PM[] = {
+    { "disable_s3", QEMU_CAPS_PIIX_DISABLE_S3 },
+    { "disable_s4", QEMU_CAPS_PIIX_DISABLE_S4 },
 };
 
 static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsUSBRedir[] = {
@@ -1649,6 +1660,11 @@ static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsVirtioGpu[] = {
     { "virgl", QEMU_CAPS_DEVICE_VIRTIO_GPU_VIRGL },
 };
 
+static struct virQEMUCapsStringFlags virQEMUCapsObjectPropsICH9[] = {
+    { "disable_s3", QEMU_CAPS_ICH9_DISABLE_S3 },
+    { "disable_s4", QEMU_CAPS_ICH9_DISABLE_S4 },
+};
+
 struct virQEMUCapsObjectTypeProps {
     const char *type;
     struct virQEMUCapsStringFlags *props;
@@ -1678,8 +1694,8 @@ static struct virQEMUCapsObjectTypeProps virQEMUCapsObjectProps[] = {
       ARRAY_CARDINALITY(virQEMUCapsObjectPropsSCSIDisk) },
     { "ide-drive", virQEMUCapsObjectPropsIDEDrive,
       ARRAY_CARDINALITY(virQEMUCapsObjectPropsIDEDrive) },
-    { "PIIX4_PM", virQEMUCapsObjectPropsPixx4PM,
-      ARRAY_CARDINALITY(virQEMUCapsObjectPropsPixx4PM) },
+    { "PIIX4_PM", virQEMUCapsObjectPropsPiix4PM,
+      ARRAY_CARDINALITY(virQEMUCapsObjectPropsPiix4PM) },
     { "usb-redir", virQEMUCapsObjectPropsUSBRedir,
       ARRAY_CARDINALITY(virQEMUCapsObjectPropsUSBRedir) },
     { "usb-host", virQEMUCapsObjectPropsUSBHost,
@@ -1704,6 +1720,14 @@ static struct virQEMUCapsObjectTypeProps virQEMUCapsObjectProps[] = {
       ARRAY_CARDINALITY(virQEMUCapsObjectPropsQxlVga) },
     { "virtio-gpu-pci", virQEMUCapsObjectPropsVirtioGpu,
       ARRAY_CARDINALITY(virQEMUCapsObjectPropsVirtioGpu) },
+    { "ICH9-LPC", virQEMUCapsObjectPropsICH9,
+      ARRAY_CARDINALITY(virQEMUCapsObjectPropsICH9) },
+    { "virtio-balloon-pci", virQEMUCapsObjectPropsVirtioBalloon,
+      ARRAY_CARDINALITY(virQEMUCapsObjectPropsVirtioBalloon) },
+    { "virtio-balloon-ccw", virQEMUCapsObjectPropsVirtioBalloon,
+      ARRAY_CARDINALITY(virQEMUCapsObjectPropsVirtioBalloon) },
+    { "virtio-balloon-device", virQEMUCapsObjectPropsVirtioBalloon,
+      ARRAY_CARDINALITY(virQEMUCapsObjectPropsVirtioBalloon) },
 };
 
 
@@ -2600,6 +2624,7 @@ static struct virQEMUCapsCommandLineProps virQEMUCapsCommandLine[] = {
     { "drive", "throttling.bps-total-max", QEMU_CAPS_DRIVE_IOTUNE_MAX},
     { "machine", "aes-key-wrap", QEMU_CAPS_AES_KEY_WRAP },
     { "machine", "dea-key-wrap", QEMU_CAPS_DEA_KEY_WRAP },
+    { "chardev", "append", QEMU_CAPS_CHARDEV_FILE_APPEND },
 };
 
 static int

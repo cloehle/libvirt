@@ -171,6 +171,7 @@ UTIL_SOURCES =							\
 		util/viruri.h util/viruri.c			\
 		util/virutil.c util/virutil.h			\
 		util/viruuid.c util/viruuid.h			\
+		util/virxdrdefs.h                               \
 		util/virxml.c util/virxml.h			\
 		$(NULL)
 
@@ -248,6 +249,7 @@ MAINTAINERCLEANFILES += $(LOCK_DAEMON_GENERATED)
 
 LOCK_DRIVER_LOCKD_SOURCES = \
 		locking/lock_driver_lockd.c \
+		locking/lock_driver_lockd.h \
 		$(NULL)
 
 LOCK_DAEMON_SOURCES = \
@@ -2298,7 +2300,7 @@ libvirt_lxc_la_LIBADD = libvirt.la $(CYGWIN_EXTRA_LIBADD)
 # have a RPC client for local UNIX socket access only. We use
 # the ../config-post.h header to disable all external deps that
 # we don't want
-if WITH_LXC
+if WITH_SETUID_RPC_CLIENT
 noinst_LTLIBRARIES += libvirt-setuid-rpc-client.la
 
 libvirt_setuid_rpc_client_la_SOURCES = 		\
@@ -2375,7 +2377,7 @@ libvirt_setuid_rpc_client_la_CFLAGS =		\
 		$(SECDRIVER_CFLAGS)		\
 		$(XDR_CFLAGS)			\
 		$(NULL)
-endif WITH_LXC
+endif WITH_SETUID_RPC_CLIENT
 
 lockdriverdir = $(libdir)/libvirt/lock-driver
 lockdriver_LTLIBRARIES =

@@ -456,7 +456,7 @@ virLogVersionString(const char **rawmsg,
  * reporting APIs or logging APIs, to prevent recursion
  */
 static int
-virLogHostnameString(const char **rawmsg,
+virLogHostnameString(char **rawmsg,
                      char **msg)
 {
     char *hostname = virGetHostnameQuiet();
@@ -469,6 +469,7 @@ virLogHostnameString(const char **rawmsg,
         VIR_FREE(hostname);
         return -1;
     }
+    VIR_FREE(hostname);
 
     if (virLogFormatString(msg, 0, NULL, VIR_LOG_INFO, hoststr) < 0) {
         VIR_FREE(hoststr);
@@ -611,6 +612,7 @@ virLogVMessage(virLogSourcePtr source,
         if (priority >= virLogOutputs[i].priority) {
             if (virLogOutputs[i].logInitMessage) {
                 const char *rawinitmsg;
+                char *hoststr = NULL;
                 char *initmsg = NULL;
                 if (virLogVersionString(&rawinitmsg, &initmsg) >= 0)
                     virLogOutputs[i].f(&virLogSelf, VIR_LOG_INFO,
@@ -618,11 +620,12 @@ virLogVMessage(virLogSourcePtr source,
                                        timestamp, NULL, 0, rawinitmsg, initmsg,
                                        virLogOutputs[i].data);
                 VIR_FREE(initmsg);
-                if (virLogHostnameString(&rawinitmsg, &initmsg) >= 0)
+                if (virLogHostnameString(&hoststr, &initmsg) >= 0)
                     virLogOutputs[i].f(&virLogSelf, VIR_LOG_INFO,
                                        __FILE__, __LINE__, __func__,
-                                       timestamp, NULL, 0, rawinitmsg, initmsg,
+                                       timestamp, NULL, 0, hoststr, initmsg,
                                        virLogOutputs[i].data);
+                VIR_FREE(hoststr);
                 VIR_FREE(initmsg);
                 virLogOutputs[i].logInitMessage = false;
             }
@@ -635,6 +638,7 @@ virLogVMessage(virLogSourcePtr source,
     if (virLogNbOutputs == 0) {
         if (logInitMessageStderr) {
             const char *rawinitmsg;
+            char *hoststr = NULL;
             char *initmsg = NULL;
             if (virLogVersionString(&rawinitmsg, &initmsg) >= 0)
                 virLogOutputToFd(&virLogSelf, VIR_LOG_INFO,
@@ -642,11 +646,12 @@ virLogVMessage(virLogSourcePtr source,
                                  timestamp, NULL, 0, rawinitmsg, initmsg,
                                  (void *) STDERR_FILENO);
             VIR_FREE(initmsg);
-            if (virLogHostnameString(&rawinitmsg, &initmsg) >= 0)
+            if (virLogHostnameString(&hoststr, &initmsg) >= 0)
                 virLogOutputToFd(&virLogSelf, VIR_LOG_INFO,
                                  __FILE__, __LINE__, __func__,
-                                 timestamp, NULL, 0, rawinitmsg, initmsg,
+                                 timestamp, NULL, 0, hoststr, initmsg,
                                  (void *) STDERR_FILENO);
+            VIR_FREE(hoststr);
             VIR_FREE(initmsg);
             logInitMessageStderr = false;
         }

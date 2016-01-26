@@ -203,7 +203,7 @@ qemuConnectAgent(virQEMUDriverPtr driver, virDomainObjPtr vm)
     qemuDomainObjPrivatePtr priv = vm->privateData;
     int ret = -1;
     qemuAgentPtr agent = NULL;
-    virDomainChrSourceDefPtr config = qemuFindAgentConfig(vm->def);
+    virDomainChrDefPtr config = qemuFindAgentConfig(vm->def);
 
     if (!config)
         return 0;
@@ -223,7 +223,7 @@ qemuConnectAgent(virQEMUDriverPtr driver, virDomainObjPtr vm)
     virObjectUnlock(vm);
 
     agent = qemuAgentOpen(vm,
-                          config,
+                          &config->source,
                           &agentCallbacks);
 
     virObjectLock(vm);
@@ -1507,8 +1507,37 @@ qemuProcessHandleMigrationStatus(qemuMonitorPtr mon ATTRIBUTE_UNUSED,
         goto cleanup;
     }
 
-    priv->job.current->status.status = status;
+    priv->job.current->stats.status = status;
     virDomainObjBroadcast(vm);
+
+ cleanup:
+    virObjectUnlock(vm);
+    return 0;
+}
+
+
+static int
+qemuProcessHandleMigrationPass(qemuMonitorPtr mon ATTRIBUTE_UNUSED,
+                               virDomainObjPtr vm,
+                               int pass,
+                               void *opaque)
+{
+    virQEMUDriverPtr driver = opaque;
+    qemuDomainObjPrivatePtr priv;
+
+    virObjectLock(vm);
+
+    VIR_DEBUG("Migrating domain %p %s, iteration %d",
+              vm, vm->def->name, pass);
+
+    priv = vm->privateData;
+    if (priv->job.asyncJob == QEMU_ASYNC_JOB_NONE) {
+        VIR_DEBUG("got MIGRATION_PASS event without a migration job");
+        goto cleanup;
+    }
+
+    qemuDomainEventQueue(driver,
+                         virDomainEventMigrationIterationNewFromObj(vm, pass));
 
  cleanup:
     virObjectUnlock(vm);
@@ -1541,6 +1570,7 @@ static qemuMonitorCallbacks monitorCallbacks = {
     .domainSerialChange = qemuProcessHandleSerialChanged,
     .domainSpiceMigrated = qemuProcessHandleSpiceMigrated,
     .domainMigrationStatus = qemuProcessHandleMigrationStatus,
+    .domainMigrationPass = qemuProcessHandleMigrationPass,
 };
 
 static void
@@ -1667,7 +1697,7 @@ qemuProcessReadLog(qemuDomainLogContextPtr logCtxt, char **msg)
         if (virLogProbablyLogMessage(filter_next) ||
             STRPREFIX(filter_next, "char device redirected to")) {
             size_t skip = (eol + 1) - filter_next;
-            memmove(filter_next, eol + 1, (got - skip) + 1);
+            memmove(filter_next, eol + 1, buf + got - eol);
             got -= skip;
         } else {
             filter_next = eol + 1;
@@ -2862,7 +2892,8 @@ qemuProcessCleanupChardevDevice(virDomainDefPtr def ATTRIBUTE_UNUSED,
                                 void *opaque ATTRIBUTE_UNUSED)
 {
     if (dev->source.type == VIR_DOMAIN_CHR_TYPE_UNIX &&
-        dev->source.data.nix.listen)
+        dev->source.data.nix.listen &&
+        dev->source.data.nix.path)
         unlink(dev->source.data.nix.path);
 
     return 0;
@@ -3860,22 +3891,25 @@ qemuProcessSPICEAllocatePorts(virQEMUDriverPtr driver,
 }
 
 
-static bool
-qemuValidateCpuMax(virDomainDefPtr def, virQEMUCapsPtr qemuCaps)
+static int
+qemuValidateCpuCount(virDomainDefPtr def,
+                     virQEMUCapsPtr qemuCaps)
 {
-    unsigned int maxCpus;
+    unsigned int maxCpus = virQEMUCapsGetMachineMaxCpus(qemuCaps, def->os.machine);
 
-    maxCpus = virQEMUCapsGetMachineMaxCpus(qemuCaps, def->os.machine);
-    if (!maxCpus)
-        return true;
-
-    if (virDomainDefGetVcpusMax(def) > maxCpus) {
-        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
-                       "%s", _("Maximum CPUs greater than specified machine type limit"));
-        return false;
+    if (virDomainDefGetVcpus(def) == 0) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("Domain requires at least 1 vCPU"));
+        return -1;
     }
 
-    return true;
+    if (maxCpus > 0 && virDomainDefGetVcpusMax(def) > maxCpus) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED, "%s",
+                       _("Maximum CPUs greater than specified machine type limit"));
+        return -1;
+    }
+
+    return 0;
 }
 
 
@@ -4124,6 +4158,7 @@ qemuProcessIncomingDefFree(qemuProcessIncomingDefPtr inc)
     if (!inc)
         return;
 
+    VIR_FREE(inc->address);
     VIR_FREE(inc->launchURI);
     VIR_FREE(inc->deferredURI);
     VIR_FREE(inc);
@@ -4137,6 +4172,7 @@ qemuProcessIncomingDefFree(qemuProcessIncomingDefPtr inc)
  */
 qemuProcessIncomingDefPtr
 qemuProcessIncomingDefNew(virQEMUCapsPtr qemuCaps,
+                          const char *listenAddress,
                           const char *migrateFrom,
                           int fd,
                           const char *path)
@@ -4148,6 +4184,9 @@ qemuProcessIncomingDefNew(virQEMUCapsPtr qemuCaps,
 
     if (VIR_ALLOC(inc) < 0)
         return NULL;
+
+    if (VIR_STRDUP(inc->address, listenAddress) < 0)
+        goto error;
 
     inc->launchURI = qemuMigrationIncomingURI(migrateFrom, fd);
     if (!inc->launchURI)
@@ -4661,7 +4700,7 @@ qemuProcessLaunch(virConnectPtr conn,
         }
     }
 
-    if (!qemuValidateCpuMax(vm->def, priv->qemuCaps))
+    if (qemuValidateCpuCount(vm->def, priv->qemuCaps) < 0)
         goto cleanup;
 
     if (qemuAssignDeviceAliases(vm->def, priv->qemuCaps) < 0)
@@ -4781,9 +4820,10 @@ qemuProcessLaunch(virConnectPtr conn,
         if (!shmem && vm->def->mem.nhugepages) {
             for (i = 0; i < virDomainNumaGetNodeCount(vm->def->numa); i++) {
                 if (virDomainNumaGetNodeMemoryAccessMode(vm->def->numa, i) ==
-                    VIR_NUMA_MEM_ACCESS_SHARED)
+                    VIR_NUMA_MEM_ACCESS_SHARED) {
                     shmem = true;
-                break;
+                    break;
+                }
             }
         }
 
@@ -5136,7 +5176,7 @@ qemuProcessStart(virConnectPtr conn,
         goto cleanup;
 
     if (migrateFrom) {
-        incoming = qemuProcessIncomingDefNew(priv->qemuCaps, migrateFrom,
+        incoming = qemuProcessIncomingDefNew(priv->qemuCaps, NULL, migrateFrom,
                                              migrateFd, migratePath);
         if (!incoming)
             goto stop;

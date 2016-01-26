@@ -111,11 +111,9 @@ virDomainVirtioSerialAddrAutoAssign;
 virDomainVirtioSerialAddrIsComplete;
 virDomainVirtioSerialAddrRelease;
 virDomainVirtioSerialAddrReserve;
-virDomainVirtioSerialAddrSetAddController;
 virDomainVirtioSerialAddrSetAddControllers;
 virDomainVirtioSerialAddrSetCreate;
 virDomainVirtioSerialAddrSetFree;
-virDomainVirtioSerialAddrSetRemoveController;
 
 
 # conf/domain_audit.h
@@ -154,6 +152,8 @@ virDiskNameToIndex;
 virDomainActualNetDefFree;
 virDomainBlockedReasonTypeFromString;
 virDomainBlockedReasonTypeToString;
+virDomainBootTypeFromString;
+virDomainBootTypeToString;
 virDomainCapabilitiesPolicyTypeToString;
 virDomainCapsFeatureTypeToString;
 virDomainChrConsoleTargetTypeFromString;
@@ -200,6 +200,7 @@ virDomainControllerTypeToString;
 virDomainCpuPlacementModeTypeFromString;
 virDomainCpuPlacementModeTypeToString;
 virDomainDefAddImplicitControllers;
+virDomainDefAddUSBController;
 virDomainDefCheckABIStability;
 virDomainDefCheckDuplicateDiskInfo;
 virDomainDefCheckUnsupportedMemoryHotplug;
@@ -515,6 +516,8 @@ virDomainEventLifecycleNew;
 virDomainEventLifecycleNewFromDef;
 virDomainEventLifecycleNewFromDom;
 virDomainEventLifecycleNewFromObj;
+virDomainEventMigrationIterationNewFromDom;
+virDomainEventMigrationIterationNewFromObj;
 virDomainEventPMSuspendDiskNewFromDom;
 virDomainEventPMSuspendDiskNewFromObj;
 virDomainEventPMSuspendNewFromDom;
@@ -2005,6 +2008,8 @@ virPCIGetVirtualFunctionIndex;
 virPCIGetVirtualFunctionInfo;
 virPCIGetVirtualFunctions;
 virPCIIsVirtualFunction;
+virPCIStubDriverTypeFromString;
+virPCIStubDriverTypeToString;
 
 
 # util/virpidfile.h
@@ -2040,6 +2045,7 @@ virPortAllocatorSetUsed;
 virProcessAbort;
 virProcessExitWithStatus;
 virProcessGetAffinity;
+virProcessGetMaxMemLock;
 virProcessGetNamespaces;
 virProcessGetPids;
 virProcessGetStartTime;

@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 
-## Copyright (C) 2005-2015 Red Hat, Inc.
+## Copyright (C) 2005-2016 Red Hat, Inc.
 ##
 ## This library is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU Lesser General Public
@@ -15,8 +15,6 @@
 ## You should have received a copy of the GNU Lesser General Public
 ## License along with this library.  If not, see
 ## <http://www.gnu.org/licenses/>.
-
-SUBDIRS= schemas
 
 PERL = perl
 
@@ -150,6 +148,9 @@ fig = \
   migration-tunnel.fig \
   migration-unmanaged-direct.fig
 
+schemadir = $(pkgdatadir)/schemas
+schema_DATA = $(wildcard $(srcdir)/schemas/*.rng)
+
 EXTRA_DIST=					\
   apibuild.py genaclperms.pl \
   site.xsl newapi.xsl news.xsl page.xsl \
@@ -160,7 +161,8 @@ EXTRA_DIST=					\
   $(patches) $(dot_php_in) $(dot_php_code_in) $(dot_php)\
   $(internals_html_in) $(internals_html) \
   sitemap.html.in aclperms.htmlinc \
-  todo.pl hvsupport.pl todo.cfg-example
+  todo.pl hvsupport.pl todo.cfg-example \
+  $(schema_DATA)
 
 acl_generated = aclperms.htmlinc
 
@@ -218,21 +220,21 @@ $(srcdir)/hvsupport.html.in: $(srcdir)/hvsupport.pl $(api_DATA) \
 %.png: %.fig
 	convert -rotate 90 $< $@
 
-internals/%.html.tmp: internals/%.html.in subsite.xsl page.xsl sitemap.html.in
-	@if [ -x $(XSLTPROC) ] ; then \
-	  echo "Generating $@"; \
-	  $(MKDIR_P) internals; \
-	  name=`echo $@ | sed -e 's/.tmp//'`; \
-	  $(XSLTPROC) --stringparam pagename $$name --nonet \
-	    $(top_srcdir)/docs/subsite.xsl $< > $@ \
-	    || { rm $@ && exit 1; }; fi
-
-%.html.tmp: %.html.in site.xsl page.xsl sitemap.html.in $(acl_generated)
+%.html.tmp: %.html.in site.xsl subsite.xsl page.xsl \
+		sitemap.html.in $(acl_generated)
 	@if [ -x $(XSLTPROC) ] ; then \
 	  echo "Generating $@"; \
 	  name=`echo $@ | sed -e 's/.tmp//'`; \
+	  dir=`dirname $@` ; \
+	  if test "$$dir" = "."; \
+	  then \
+	    style=site.xsl; \
+	  else \
+	    $(MKDIR_P) $$dir; \
+	    style=subsite.xsl; \
+	  fi; \
 	  $(XSLTPROC) --stringparam pagename $$name --nonet \
-	    $(top_srcdir)/docs/site.xsl $< > $@ \
+	    $(top_srcdir)/docs/$$style $< > $@ \
 	    || { rm $@ && exit 1; }; fi
 
 %.html: %.html.tmp

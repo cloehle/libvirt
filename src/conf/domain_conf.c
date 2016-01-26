@@ -1,7 +1,7 @@
 /*
  * domain_conf.c: domain XML processing
  *
- * Copyright (C) 2006-2015 Red Hat, Inc.
+ * Copyright (C) 2006-2016 Red Hat, Inc.
  * Copyright (C) 2006-2008 Daniel P. Berrange
  * Copyright (c) 2015 SUSE LINUX Products GmbH, Nuernberg, Germany.
  *
@@ -1723,10 +1723,12 @@ virDomainChrSourceDefCopy(virDomainChrSourceDefPtr dest,
     virDomainChrSourceDefClear(dest);
 
     switch (src->type) {
+    case VIR_DOMAIN_CHR_TYPE_FILE:
     case VIR_DOMAIN_CHR_TYPE_PTY:
     case VIR_DOMAIN_CHR_TYPE_DEV:
-    case VIR_DOMAIN_CHR_TYPE_FILE:
     case VIR_DOMAIN_CHR_TYPE_PIPE:
+        if (src->type == VIR_DOMAIN_CHR_TYPE_FILE)
+            dest->data.file.append = src->data.file.append;
         if (VIR_STRDUP(dest->data.file.path, src->data.file.path) < 0)
             return -1;
         break;
@@ -1797,9 +1799,12 @@ virDomainChrSourceDefIsEqual(const virDomainChrSourceDef *src,
         return false;
 
     switch ((virDomainChrType)src->type) {
+    case VIR_DOMAIN_CHR_TYPE_FILE:
+        return src->data.file.append == tgt->data.file.append &&
+            STREQ_NULLABLE(src->data.file.path, tgt->data.file.path);
+        break;
     case VIR_DOMAIN_CHR_TYPE_PTY:
     case VIR_DOMAIN_CHR_TYPE_DEV:
-    case VIR_DOMAIN_CHR_TYPE_FILE:
     case VIR_DOMAIN_CHR_TYPE_PIPE:
         return STREQ_NULLABLE(src->data.file.path, tgt->data.file.path);
         break;
@@ -3662,21 +3667,9 @@ virDomainDefPostParseMemory(virDomainDefPtr def,
 
 
 static int
-virDomainDefPostParseInternal(virDomainDefPtr def,
-                              virCapsPtr caps ATTRIBUTE_UNUSED,
-                              unsigned int parseFlags)
+virDomainDefAddConsoleCompat(virDomainDefPtr def)
 {
     size_t i;
-
-    /* verify init path for container based domains */
-    if (def->os.type == VIR_DOMAIN_OSTYPE_EXE && !def->os.init) {
-        virReportError(VIR_ERR_XML_ERROR, "%s",
-                       _("init binary must be specified"));
-        return -1;
-    }
-
-    if (virDomainDefPostParseMemory(def, parseFlags) < 0)
-        return -1;
 
     /*
      * Some really crazy backcompat stuff for consoles
@@ -3770,11 +3763,14 @@ virDomainDefPostParseInternal(virDomainDefPtr def,
         def->consoles[0]->targetType = VIR_DOMAIN_CHR_CONSOLE_TARGET_TYPE_SERIAL;
     }
 
-    if (virDomainDefRejectDuplicateControllers(def) < 0)
-        return -1;
+    return 0;
+}
 
-    if (virDomainDefRejectDuplicatePanics(def) < 0)
-        return -1;
+
+static int
+virDomainDefPostParseTimer(virDomainDefPtr def)
+{
+    size_t i;
 
     /* verify settings of guest timers */
     for (i = 0; i < def->clock.ntimers; i++) {
@@ -3830,6 +3826,37 @@ virDomainDefPostParseInternal(virDomainDefPtr def,
             }
         }
     }
+
+    return 0;
+}
+
+
+static int
+virDomainDefPostParseInternal(virDomainDefPtr def,
+                              virCapsPtr caps ATTRIBUTE_UNUSED,
+                              unsigned int parseFlags)
+{
+    /* verify init path for container based domains */
+    if (def->os.type == VIR_DOMAIN_OSTYPE_EXE && !def->os.init) {
+        virReportError(VIR_ERR_XML_ERROR, "%s",
+                       _("init binary must be specified"));
+        return -1;
+    }
+
+    if (virDomainDefPostParseMemory(def, parseFlags) < 0)
+        return -1;
+
+    if (virDomainDefAddConsoleCompat(def) < 0)
+        return -1;
+
+    if (virDomainDefRejectDuplicateControllers(def) < 0)
+        return -1;
+
+    if (virDomainDefRejectDuplicatePanics(def) < 0)
+        return -1;
+
+    if (virDomainDefPostParseTimer(def) < 0)
+        return -1;
 
     /* clean up possibly duplicated metadata entries */
     virDomainDefMetadataSanitize(def);
@@ -3996,6 +4023,7 @@ static int
 virDomainDeviceDefPostParseInternal(virDomainDeviceDefPtr dev,
                                     const virDomainDef *def,
                                     virCapsPtr caps ATTRIBUTE_UNUSED,
+                                    unsigned int parseFlags ATTRIBUTE_UNUSED,
                                     virDomainXMLOptionPtr xmlopt)
 {
     if (dev->type == VIR_DOMAIN_DEVICE_CHR) {
@@ -4129,18 +4157,19 @@ static int
 virDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
                             const virDomainDef *def,
                             virCapsPtr caps,
+                            unsigned int flags,
                             virDomainXMLOptionPtr xmlopt)
 {
     int ret;
 
     if (xmlopt->config.devicesPostParseCallback) {
-        ret = xmlopt->config.devicesPostParseCallback(dev, def, caps,
+        ret = xmlopt->config.devicesPostParseCallback(dev, def, caps, flags,
                                                       xmlopt->config.priv);
         if (ret < 0)
             return ret;
     }
 
-    if ((ret = virDomainDeviceDefPostParseInternal(dev, def, caps, xmlopt)) < 0)
+    if ((ret = virDomainDeviceDefPostParseInternal(dev, def, caps, flags, xmlopt)) < 0)
         return ret;
 
     return 0;
@@ -4151,6 +4180,7 @@ struct virDomainDefPostParseDeviceIteratorData {
     virDomainDefPtr def;
     virCapsPtr caps;
     virDomainXMLOptionPtr xmlopt;
+    unsigned int parseFlags;
 };
 
 
@@ -4161,7 +4191,8 @@ virDomainDefPostParseDeviceIterator(virDomainDefPtr def ATTRIBUTE_UNUSED,
                                     void *opaque)
 {
     struct virDomainDefPostParseDeviceIteratorData *data = opaque;
-    return virDomainDeviceDefPostParse(dev, data->def, data->caps, data->xmlopt);
+    return virDomainDeviceDefPostParse(dev, data->def, data->caps,
+                                       data->parseFlags, data->xmlopt);
 }
 
 
@@ -4176,11 +4207,12 @@ virDomainDefPostParse(virDomainDefPtr def,
         .def = def,
         .caps = caps,
         .xmlopt = xmlopt,
+        .parseFlags = parseFlags,
     };
 
     /* call the domain config callback */
     if (xmlopt->config.domainPostParseCallback) {
-        ret = xmlopt->config.domainPostParseCallback(def, caps,
+        ret = xmlopt->config.domainPostParseCallback(def, caps, parseFlags,
                                                      xmlopt->config.priv);
         if (ret < 0)
             return ret;
@@ -9372,6 +9404,7 @@ virDomainChrSourceDefParseXML(virDomainChrSourceDefPtr def,
     char *channel = NULL;
     char *master = NULL;
     char *slave = NULL;
+    char *append = NULL;
     int remaining = 0;
 
     while (cur != NULL) {
@@ -9381,11 +9414,13 @@ virDomainChrSourceDefParseXML(virDomainChrSourceDefPtr def,
                     mode = virXMLPropString(cur, "mode");
 
                 switch ((virDomainChrType) def->type) {
+                case VIR_DOMAIN_CHR_TYPE_FILE:
                 case VIR_DOMAIN_CHR_TYPE_PTY:
                 case VIR_DOMAIN_CHR_TYPE_DEV:
-                case VIR_DOMAIN_CHR_TYPE_FILE:
                 case VIR_DOMAIN_CHR_TYPE_PIPE:
                 case VIR_DOMAIN_CHR_TYPE_UNIX:
+                    if (!append && def->type == VIR_DOMAIN_CHR_TYPE_FILE)
+                        append = virXMLPropString(cur, "append");
                     /* PTY path is only parsed from live xml.  */
                     if (!path  &&
                         (def->type != VIR_DOMAIN_CHR_TYPE_PTY ||
@@ -9469,10 +9504,16 @@ virDomainChrSourceDefParseXML(virDomainChrSourceDefPtr def,
     case VIR_DOMAIN_CHR_TYPE_LAST:
         break;
 
+    case VIR_DOMAIN_CHR_TYPE_FILE:
     case VIR_DOMAIN_CHR_TYPE_PTY:
     case VIR_DOMAIN_CHR_TYPE_DEV:
-    case VIR_DOMAIN_CHR_TYPE_FILE:
     case VIR_DOMAIN_CHR_TYPE_PIPE:
+        if (append && def->type == VIR_DOMAIN_CHR_TYPE_FILE &&
+            (def->data.file.append = virTristateSwitchTypeFromString(append)) <= 0) {
+            virReportError(VIR_ERR_INTERNAL_ERROR,
+                           _("Invalid append attribute value '%s'"), append);
+            goto error;
+        }
         if (!path &&
             def->type != VIR_DOMAIN_CHR_TYPE_PTY) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
@@ -9612,6 +9653,7 @@ virDomainChrSourceDefParseXML(virDomainChrSourceDefPtr def,
     VIR_FREE(connectService);
     VIR_FREE(path);
     VIR_FREE(channel);
+    VIR_FREE(append);
 
     return remaining;
 
@@ -11313,6 +11355,7 @@ virDomainMemballoonDefParseXML(xmlNodePtr node,
                                unsigned int flags)
 {
     char *model;
+    char *deflate = NULL;
     virDomainMemballoonDefPtr def;
     xmlNodePtr save = ctxt->node;
     unsigned int period = 0;
@@ -11330,6 +11373,13 @@ virDomainMemballoonDefParseXML(xmlNodePtr node,
     if ((def->model = virDomainMemballoonModelTypeFromString(model)) < 0) {
         virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
                        _("unknown memory balloon model '%s'"), model);
+        goto error;
+    }
+
+    if ((deflate = virXMLPropString(node, "autodeflate")) &&
+        (def->autodeflate = virTristateSwitchTypeFromString(deflate)) <= 0) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("invalid autodeflate attribute value '%s'"), deflate);
         goto error;
     }
 
@@ -11351,6 +11401,7 @@ virDomainMemballoonDefParseXML(xmlNodePtr node,
 
  cleanup:
     VIR_FREE(model);
+    VIR_FREE(deflate);
 
     ctxt->node = save;
     return def;
@@ -12608,7 +12659,7 @@ virDomainDeviceDefParse(const char *xmlStr,
     }
 
     /* callback to fill driver specific device aspects */
-    if (virDomainDeviceDefPostParse(dev, def, caps, xmlopt) < 0)
+    if (virDomainDeviceDefPostParse(dev, def, caps, flags, xmlopt) < 0)
         goto error;
 
  cleanup:
@@ -13292,6 +13343,18 @@ virDomainControllerFind(virDomainDefPtr def,
     }
 
     return -1;
+}
+
+
+static int
+virDomainControllerFindUnusedIndex(virDomainDefPtr def, int type)
+{
+    int idx = 0;
+
+    while (virDomainControllerFind(def, type, idx) >= 0)
+        idx++;
+
+    return idx;
 }
 
 
@@ -14214,33 +14277,98 @@ virDomainEmulatorPinDefParseXML(xmlNodePtr node)
 }
 
 
+static virDomainControllerDefPtr
+virDomainDefAddController(virDomainDefPtr def, int type, int idx, int model)
+{
+    virDomainControllerDefPtr cont;
+
+    if (!(cont = virDomainControllerDefNew(type)))
+        return NULL;
+
+    if (idx < 0)
+        idx = virDomainControllerFindUnusedIndex(def, type);
+
+    cont->idx = idx;
+    cont->model = model;
+
+    if (VIR_APPEND_ELEMENT_COPY(def->controllers, def->ncontrollers, cont) < 0) {
+        VIR_FREE(cont);
+        return NULL;
+    }
+
+    return cont;
+}
+
+
+/**
+ * virDomainDefAddUSBController:
+ * @def:   the domain
+ * @idx:   index for new controller (or -1 for "lowest unused index")
+ * @model: VIR_DOMAIN_CONTROLLER_MODEL_USB_* or -1
+ *
+ * Add a USB controller of the specified model (or default model for
+ * current machinetype if model == -1). If model is ich9-usb-ehci,
+ * also add companion uhci1, uhci2, and uhci3 controllers at the same
+ * index.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
+int
+virDomainDefAddUSBController(virDomainDefPtr def, int idx, int model)
+{
+    virDomainControllerDefPtr cont; /* this is a *copy* of the DefPtr */
+
+    cont = virDomainDefAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_USB,
+                                     idx, model);
+    if (!cont)
+        return -1;
+
+    if (model != VIR_DOMAIN_CONTROLLER_MODEL_USB_ICH9_EHCI1)
+        return 0;
+
+    /* When the initial controller is ich9-usb-ehci, also add the
+     * companion controllers
+     */
+
+    idx = cont->idx; /* in case original request was "-1" */
+
+    if (!(cont = virDomainDefAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_USB,
+                                           idx, VIR_DOMAIN_CONTROLLER_MODEL_USB_ICH9_UHCI1)))
+        return -1;
+    cont->info.mastertype = VIR_DOMAIN_CONTROLLER_MASTER_USB;
+    cont->info.master.usb.startport = 0;
+
+    if (!(cont = virDomainDefAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_USB,
+                                           idx, VIR_DOMAIN_CONTROLLER_MODEL_USB_ICH9_UHCI2)))
+        return -1;
+    cont->info.mastertype = VIR_DOMAIN_CONTROLLER_MASTER_USB;
+    cont->info.master.usb.startport = 2;
+
+    if (!(cont = virDomainDefAddController(def, VIR_DOMAIN_CONTROLLER_TYPE_USB,
+                                           idx, VIR_DOMAIN_CONTROLLER_MODEL_USB_ICH9_UHCI3)))
+        return -1;
+    cont->info.mastertype = VIR_DOMAIN_CONTROLLER_MASTER_USB;
+    cont->info.master.usb.startport = 4;
+
+    return 0;
+}
+
+
 int
 virDomainDefMaybeAddController(virDomainDefPtr def,
                                int type,
                                int idx,
                                int model)
 {
-    size_t i;
-    virDomainControllerDefPtr cont;
+    /* skip if a specific index was given and it is already
+     * in use for that type of controller
+     */
+    if (idx >= 0 && virDomainControllerFind(def, type, idx) >= 0)
+        return 0;
 
-    for (i = 0; i < def->ncontrollers; i++) {
-        if (def->controllers[i]->type == type &&
-            def->controllers[i]->idx == idx)
-            return 0;
-    }
-
-    if (!(cont = virDomainControllerDefNew(type)))
-        return -1;
-
-    cont->idx = idx;
-    cont->model = model;
-
-    if (VIR_APPEND_ELEMENT(def->controllers, def->ncontrollers, cont) < 0) {
-        VIR_FREE(cont);
-        return -1;
-    }
-
-    return 1;
+    if (virDomainDefAddController(def, type, idx, model))
+        return 1;
+    return -1;
 }
 
 
@@ -17224,6 +17352,15 @@ virDomainMemballoonDefCheckABIStability(virDomainMemballoonDefPtr src,
         return false;
     }
 
+    if (src->autodeflate != dst->autodeflate) {
+        virReportError(VIR_ERR_CONFIG_UNSUPPORTED,
+                       _("Target balloon autodeflate attribute value "
+                         "'%s' does not match source '%s'"),
+                       virTristateSwitchTypeToString(dst->autodeflate),
+                       virTristateSwitchTypeToString(src->autodeflate));
+        return false;
+    }
+
     if (!virDomainDeviceInfoCheckABIStability(&src->info, &dst->info))
         return false;
 
@@ -20057,6 +20194,10 @@ virDomainChrSourceDefFormat(virBufferPtr buf,
              !(flags & VIR_DOMAIN_DEF_FORMAT_INACTIVE))) {
             virBufferEscapeString(buf, "<source path='%s'",
                                   def->data.file.path);
+            if (def->type == VIR_DOMAIN_CHR_TYPE_FILE &&
+                def->data.file.append != VIR_TRISTATE_SWITCH_ABSENT)
+                virBufferAsprintf(buf, " append='%s'",
+                    virTristateSwitchTypeToString(def->data.file.append));
             virDomainSourceDefFormatSeclabel(buf, nseclabels, seclabels, flags);
         }
         break;
@@ -20401,6 +20542,11 @@ virDomainMemballoonDefFormat(virBufferPtr buf,
     }
 
     virBufferAsprintf(buf, "<memballoon model='%s'", model);
+
+    if (def->autodeflate != VIR_TRISTATE_SWITCH_ABSENT)
+        virBufferAsprintf(buf, " autodeflate='%s'",
+                          virTristateSwitchTypeToString(def->autodeflate));
+
     virBufferAdjustIndent(&childrenBuf, indent + 2);
 
     if (def->period)

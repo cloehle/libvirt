@@ -527,6 +527,7 @@ VIR_ENUM_IMPL(virVMXControllerModelSCSI, VIR_DOMAIN_CONTROLLER_MODEL_SCSI_LAST,
 static int
 virVMXDomainDefPostParse(virDomainDefPtr def,
                          virCapsPtr caps ATTRIBUTE_UNUSED,
+                         unsigned int parseFlags ATTRIBUTE_UNUSED,
                          void *opaque ATTRIBUTE_UNUSED)
 {
     /* memory hotplug tunables are not supported by this driver */
@@ -540,6 +541,7 @@ static int
 virVMXDomainDevicesDefPostParse(virDomainDeviceDefPtr dev ATTRIBUTE_UNUSED,
                                 const virDomainDef *def ATTRIBUTE_UNUSED,
                                 virCapsPtr caps ATTRIBUTE_UNUSED,
+                                unsigned int parseFlags ATTRIBUTE_UNUSED,
                                 void *opaque ATTRIBUTE_UNUSED)
 {
     return 0;
@@ -2232,6 +2234,7 @@ virVMXParseDisk(virVMXContext *ctx, virDomainXMLOptionPtr xmlopt, virConfPtr con
                 (*def)->transient = STRCASEEQ(mode,
                                               "independent-nonpersistent");
         } else if (virFileHasSuffix(fileName, ".iso") ||
+                   STREQ(fileName, "emptyBackingString") ||
                    (deviceType &&
                     (STRCASEEQ(deviceType, "atapi-cdrom") ||
                      STRCASEEQ(deviceType, "cdrom-raw") ||
@@ -2317,6 +2320,16 @@ virVMXParseDisk(virVMXContext *ctx, virDomainXMLOptionPtr xmlopt, virConfPtr con
                  */
                 goto ignore;
             }
+        } else if (STREQ(fileName, "emptyBackingString")) {
+            if (deviceType && STRCASENEQ(deviceType, "cdrom-image")) {
+                virReportError(VIR_ERR_INTERNAL_ERROR,
+                               _("Expecting VMX entry '%s' to be 'cdrom-image' "
+                                 "but found '%s'"), deviceType_name, deviceType);
+                goto cleanup;
+            }
+
+            virDomainDiskSetType(*def, VIR_STORAGE_TYPE_FILE);
+            ignore_value(virDomainDiskSetSource(*def, NULL));
         } else {
             virReportError(VIR_ERR_INTERNAL_ERROR,
                            _("Invalid or not yet handled value '%s' "
@@ -3524,15 +3537,19 @@ virVMXFormatDisk(virVMXContext *ctx, virDomainDiskDefPtr def,
     if (type == VIR_STORAGE_TYPE_FILE) {
         const char *src = virDomainDiskGetSource(def);
 
-        if (src && ! virFileHasSuffix(src, fileExt)) {
-            virReportError(VIR_ERR_INTERNAL_ERROR,
-                           _("Image file for %s %s '%s' has "
-                             "unsupported suffix, expecting '%s'"),
-                           busType, deviceType, def->dst, fileExt);
+        if (src) {
+            if (!virFileHasSuffix(src, fileExt)) {
+                virReportError(VIR_ERR_INTERNAL_ERROR,
+                               _("Image file for %s %s '%s' has "
+                                 "unsupported suffix, expecting '%s'"),
+                               busType, deviceType, def->dst, fileExt);
                 return -1;
-        }
+            }
 
-        fileName = ctx->formatFileName(src, ctx->opaque);
+            fileName = ctx->formatFileName(src, ctx->opaque);
+        } else if (def->device == VIR_DOMAIN_DISK_DEVICE_CDROM) {
+            ignore_value(VIR_STRDUP(fileName, "emptyBackingString"));
+        }
 
         if (fileName == NULL)
             return -1;

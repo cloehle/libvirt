@@ -175,6 +175,7 @@ vzConnectGetCapabilities(virConnectPtr conn)
 static int
 vzDomainDefPostParse(virDomainDefPtr def,
                      virCapsPtr caps ATTRIBUTE_UNUSED,
+                     unsigned int parseFlags ATTRIBUTE_UNUSED,
                      void *opaque ATTRIBUTE_UNUSED)
 {
     /* memory hotplug tunables are not supported by this driver */
@@ -188,6 +189,7 @@ static int
 vzDomainDeviceDefPostParse(virDomainDeviceDefPtr dev,
                            const virDomainDef *def,
                            virCapsPtr caps ATTRIBUTE_UNUSED,
+                           unsigned int parseFlags ATTRIBUTE_UNUSED,
                            void *opaque ATTRIBUTE_UNUSED)
 {
     int ret = -1;
@@ -266,6 +268,7 @@ vzOpenDefault(virConnectPtr conn)
     prlsdkDisconnect(privconn);
     prlsdkDeinit();
  err_free:
+    conn->privateData = NULL;
     VIR_FREE(privconn);
     return VIR_DRV_OPEN_ERROR;
 }
@@ -307,10 +310,8 @@ vzConnectOpen(virConnectPtr conn,
         return VIR_DRV_OPEN_ERROR;
     }
 
-    if ((ret = vzOpenDefault(conn)) != VIR_DRV_OPEN_SUCCESS) {
-        vzConnectClose(conn);
+    if ((ret = vzOpenDefault(conn)) != VIR_DRV_OPEN_SUCCESS)
         return ret;
-    }
 
     return VIR_DRV_OPEN_SUCCESS;
 }
@@ -961,12 +962,13 @@ vzDomainUndefineFlags(virDomainPtr domain,
     virDomainObjPtr dom = NULL;
     int ret;
 
-    virCheckFlags(0, -1);
+    virCheckFlags(VIR_DOMAIN_UNDEFINE_MANAGED_SAVE |
+                  VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA, -1);
 
     if (!(dom = vzDomObjFromDomain(domain)))
         return -1;
 
-    ret = prlsdkUnregisterDomain(privconn, dom);
+    ret = prlsdkUnregisterDomain(privconn, dom, flags);
     if (ret)
         virObjectUnlock(dom);
 

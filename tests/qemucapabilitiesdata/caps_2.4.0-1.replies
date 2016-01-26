@@ -2759,6 +2759,216 @@
 }
 
 {
+  "return":  [
+    {
+      "type": "bool",
+      "name": "memory-hotplug-support"
+    },
+    {
+      "type": "uint32",
+      "name": "rombar"
+    },
+    {
+      "type": "uint32",
+      "name": "sci_int"
+    },
+    {
+      "type": "uint32",
+      "name": "gpe0_blk_len"
+    },
+    {
+      "type": "uint32",
+      "name": "pm_io_base"
+    },
+    {
+      "type": "bool",
+      "name": "noreboot"
+    },
+    {
+      "type": "bool",
+      "name": "multifunction",
+      "description": "on/off"
+    },
+    {
+      "type": "uint8",
+      "name": "disable_s4"
+    },
+    {
+      "type": "uint8",
+      "name": "acpi_disable_cmd"
+    },
+    {
+      "type": "str",
+      "name": "romfile"
+    },
+    {
+      "type": "uint8",
+      "name": "disable_s3"
+    },
+    {
+      "type": "uint8",
+      "name": "s4_val"
+    },
+    {
+      "type": "uint8",
+      "name": "acpi_enable_cmd"
+    },
+    {
+      "type": "bool",
+      "name": "command_serr_enable",
+      "description": "on/off"
+    },
+    {
+      "type": "int32",
+      "name": "addr",
+      "description": "Slot and optional function number, example: 06.0 or 06"
+    },
+    {
+      "type": "bool",
+      "name": "enable_tco"
+    },
+    {
+      "type": "uint32",
+      "name": "gpe0_blk"
+    }
+  ],
+  "id": "libvirt-33"
+}
+
+
+{
+  "return": [
+    {
+      "name": "guest-stats-polling-interval",
+      "type": "int"
+    },
+    {
+      "name": "guest-stats",
+      "type": "guest statistics"
+    },
+    {
+      "name": "any_layout",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "notify_on_empty",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "event_idx",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "indirect_desc",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "deflate-on-oom",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "virtio-backend",
+      "type": "child<virtio-balloon-device>"
+    },
+    {
+      "name": "command_serr_enable",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "multifunction",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "rombar",
+      "type": "uint32"
+    },
+    {
+      "name": "romfile",
+      "type": "str"
+    },
+    {
+      "name": "addr",
+      "description": "Slot and optional function number, example: 06.0 or 06",
+      "type": "int32"
+    },
+    {
+      "name": "disable-modern",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "disable-legacy",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "virtio-pci-bus-master-bug-migration",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "class",
+      "type": "uint32"
+    }
+  ],
+  "id": "libvirt-34"
+}
+
+{
+  "id": "libvirt-35",
+  "error": {
+    "class": "DeviceNotFound",
+    "desc": "Device 'virtio-balloon-ccw' not found"
+  }
+}
+
+{
+  "return": [
+    {
+      "name": "guest-stats-polling-interval",
+      "type": "int"
+    },
+    {
+      "name": "guest-stats",
+      "type": "guest statistics"
+    },
+    {
+      "name": "any_layout",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "notify_on_empty",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "event_idx",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "indirect_desc",
+      "description": "on/off",
+      "type": "bool"
+    },
+    {
+      "name": "deflate-on-oom",
+      "description": "on/off",
+      "type": "bool"
+    }
+  ],
+  "id": "libvirt-36"
+}
+
+{
   "return": [
     {
       "name": "pc-i440fx-2.4",
@@ -2884,7 +3094,7 @@
       "cpu-max": 255
     }
   ],
-  "id": "libvirt-33"
+  "id": "libvirt-37"
 }
 
 {
@@ -2974,7 +3184,7 @@
       "name": "qemu64"
     }
   ],
-  "id": "libvirt-34"
+  "id": "libvirt-38"
 }
 
 {
@@ -2982,21 +3192,21 @@
     "enabled": false,
     "present": true
   },
-  "id": "libvirt-35"
+  "id": "libvirt-39"
 }
 
 {
   "return": [
     "tpm-tis"
   ],
-  "id": "libvirt-36"
+  "id": "libvirt-40"
 }
 
 {
   "return": [
     "passthrough"
   ],
-  "id": "libvirt-37"
+  "id": "libvirt-41"
 }
 
 {
@@ -4000,7 +4210,7 @@
       "option": "drive"
     }
   ],
-  "id": "libvirt-38"
+  "id": "libvirt-42"
 }
 
 {
@@ -4030,5 +4240,5 @@
       "capability": "events"
     }
   ],
-  "id": "libvirt-39"
+  "id": "libvirt-43"
 }
