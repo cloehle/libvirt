@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body>
+    <h1>Jailhouse driver</h1>
+    <ul id="toc"></ul>
+    <p>
+        The libvirt Jailhouse driver provides rudimentary support for managing Jailhouse cells.
+    </p>
+
+
+    <h2><a name="project">Project Links</a></h2>
+    <ul>
+      <li>
+        The <a href="https://github.com/siemens/jailhouse">Jailhouse</a> project.
+      </li>
+    </ul>
+
+
+    <h2><a name="uri">Connections to the Jailhouse driver</a></h2>
+    <p>
+        The Jailhouse driver utilizes the Jailhouse binary to provide management of cells using libvirt. The binary must be in $PATH for the driver to use it. Those connection URIs should suffice:
+    </p>
+<pre>
+jailhouse:///                       (local access)
+jailhouse+ssh://root@example.com/   (remote access, SSH tunnelled)
+</pre>
+
+</body></html>
