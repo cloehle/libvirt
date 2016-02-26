@@ -244,6 +244,8 @@ qemuMonitorPtr qemuMonitorOpenFD(virDomainObjPtr vm,
                                  void *opaque)
     ATTRIBUTE_NONNULL(1) ATTRIBUTE_NONNULL(4);
 
+void qemuMonitorUnregister(qemuMonitorPtr mon)
+    ATTRIBUTE_NONNULL(1);
 void qemuMonitorClose(qemuMonitorPtr mon);
 
 virErrorPtr qemuMonitorLastError(qemuMonitorPtr mon);
@@ -559,23 +561,6 @@ int qemuMonitorMigrateToHost(qemuMonitorPtr mon,
 int qemuMonitorMigrateToCommand(qemuMonitorPtr mon,
                                 unsigned int flags,
                                 const char * const *argv);
-
-/* In general, BS is the smallest fundamental block size we can use to
- * access a block device; everything must be aligned to a multiple of
- * this.  Linux generally supports a BS as small as 512, but with
- * newer disks with 4k sectors, performance is better if we guarantee
- * alignment to the sector size.  However, operating on BS-sized
- * blocks is painfully slow, so we also have a transfer size that is
- * larger but only aligned to the smaller block size.
- */
-# define QEMU_MONITOR_MIGRATE_TO_FILE_BS (1024llu * 4)
-# define QEMU_MONITOR_MIGRATE_TO_FILE_TRANSFER_SIZE (1024llu * 1024)
-
-int qemuMonitorMigrateToFile(qemuMonitorPtr mon,
-                             unsigned int flags,
-                             const char * const *argv,
-                             const char *target,
-                             unsigned long long offset);
 
 int qemuMonitorMigrateToUnix(qemuMonitorPtr mon,
                              unsigned int flags,
@@ -942,18 +927,5 @@ int qemuMonitorGetMemoryDeviceInfo(qemuMonitorPtr mon,
 
 int qemuMonitorMigrateIncoming(qemuMonitorPtr mon,
                                const char *uri);
-
-/**
- * When running two dd process and using <> redirection, we need a
- * shell that will not truncate files.  These two strings serve that
- * purpose.
- */
-# ifdef VIR_WRAPPER_SHELL
-#  define VIR_WRAPPER_SHELL_PREFIX VIR_WRAPPER_SHELL " -c '"
-#  define VIR_WRAPPER_SHELL_SUFFIX "'"
-# else
-#  define VIR_WRAPPER_SHELL_PREFIX /* nothing */
-#  define VIR_WRAPPER_SHELL_SUFFIX /* nothing */
-# endif
 
 #endif /* QEMU_MONITOR_H */

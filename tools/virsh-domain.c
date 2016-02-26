@@ -1810,14 +1810,17 @@ virshBlockJobWaitFree(virshBlockJobWaitDataPtr data)
  * virshBlockJobWait:
  * @data: private data initialized by virshBlockJobWaitInit
  *
- * Waits for the block job to complete. This function prefers to get an event
- * from libvirt but still has fallback means if the device name can't be matched
+ * Waits for the block job to complete. This function prefers to wait for a
+ * matching VIR_DOMAIN_EVENT_ID_BLOCK_JOB or VIR_DOMAIN_EVENT_ID_BLOCK_JOB_2
+ * event from libvirt; however, it has a fallback mode should either of these
+ * events not be available.
  *
- * This function returns values from the virConnectDomainEventBlockJobStatus enum
- * or -1 in case of a internal error. Fallback states if a block job vanishes
- * without triggering the event is VIR_DOMAIN_BLOCK_JOB_COMPLETED. For two phase
- * jobs after the retry count for waiting for the event expires is
- * VIR_DOMAIN_BLOCK_JOB_READY.
+ * This function returns values from the virConnectDomainEventBlockJobStatus
+ * enum or -1 in case of an internal error.
+ *
+ * If the fallback mode is activated the returned event is
+ * VIR_DOMAIN_BLOCK_JOB_COMPLETED if the block job vanishes or
+ * VIR_DOMAIN_BLOCK_JOB_READY if the block job reaches 100%.
  */
 static int
 virshBlockJobWait(virshBlockJobWaitDataPtr data)
@@ -1837,7 +1840,7 @@ virshBlockJobWait(virshBlockJobWaitDataPtr data)
 
     unsigned int abort_flags = 0;
     int ret = -1;
-    virDomainBlockJobInfo info;
+    virDomainBlockJobInfo info, last;
     int result;
 
     if (!data)
@@ -1857,8 +1860,10 @@ virshBlockJobWait(virshBlockJobWaitDataPtr data)
 
     if (data->timeout && virTimeMillisNow(&start) < 0) {
         vshSaveLibvirtError();
-        return -1;
+        goto cleanup;
     }
+
+    last.cur = last.end = 0;
 
     while (true) {
         pthread_sigmask(SIG_BLOCK, &sigmask, &oldsigmask);
@@ -1870,30 +1875,36 @@ virshBlockJobWait(virshBlockJobWaitDataPtr data)
             goto cleanup;
         }
 
-        /* if we've got an event for the device we are waiting for we can end
-         * the waiting loop */
+        /* If either callback could be registered and we've got an event, we can
+         * can end the waiting loop */
         if ((data->cb_id >= 0 || data->cb_id2 >= 0) && data->status != -1) {
             ret = data->status;
-            goto cleanup;
-        }
-
-        /* since virsh can't guarantee that the path provided by the user will
-         * later be matched in the event we will need to keep the fallback
-         * approach and claim success if the block job finishes or vanishes. */
-        if (result == 0)
             break;
-
-        /* for two-phase jobs we will try to wait in the synchronized phase
-         * for event arrival since 100% completion doesn't necessarily mean that
-         * the block job has finished and can be terminated with success */
-        if (info.end == info.cur && --retries == 0) {
-            ret = VIR_DOMAIN_BLOCK_JOB_READY;
-            goto cleanup;
         }
 
-        if (data->verbose)
+        /* Fallback behaviour is only needed if one or both callbacks could not
+         * be registered */
+        if (data->cb_id < 0 || data->cb_id2 < 0) {
+            /* If the block job vanishes, synthesize a COMPLETED event */
+            if (result == 0) {
+                ret = VIR_DOMAIN_BLOCK_JOB_COMPLETED;
+                break;
+            }
+
+            /* If the block job hits 100%, wait a little while for a possible
+             * event from libvirt unless both callbacks could not be registered
+             * in order to synthesize our own READY event */
+            if (info.end == info.cur &&
+                ((data->cb_id < 0 && data->cb_id2 < 0) || --retries == 0)) {
+                ret = VIR_DOMAIN_BLOCK_JOB_READY;
+                break;
+            }
+        }
+
+        if (data->verbose && (info.cur != last.cur || info.end != last.end))
             virshPrintJobProgress(data->job_name, info.end - info.cur,
                                   info.end);
+        last = info;
 
         if (data->timeout && virTimeMillisNow(&curr) < 0) {
             vshSaveLibvirtError();
@@ -1908,21 +1919,19 @@ virshBlockJobWait(virshBlockJobWaitDataPtr data)
             }
 
             ret = VIR_DOMAIN_BLOCK_JOB_CANCELED;
-            goto cleanup;
+            break;
         }
 
         usleep(500 * 1000);
     }
 
-    ret = VIR_DOMAIN_BLOCK_JOB_COMPLETED;
-
- cleanup:
     /* print 100% completed */
     if (data->verbose &&
         (ret == VIR_DOMAIN_BLOCK_JOB_COMPLETED ||
          ret == VIR_DOMAIN_BLOCK_JOB_READY))
         virshPrintJobProgress(data->job_name, 0, 1);
 
+ cleanup:
     sigaction(SIGINT, &old_sig_action, NULL);
     return ret;
 }
@@ -4533,10 +4542,7 @@ cmdSaveImageEdit(vshControl *ctl, const vshCmd *cmd)
      * However, in the edit cycle, we let the user retry if the define
      * step fails, but the define step will always fail on invalid
      * flags, so we reject it up front to avoid looping.  */
-    if (define_flags == (VIR_DOMAIN_SAVE_RUNNING | VIR_DOMAIN_SAVE_PAUSED)) {
-        vshError(ctl, "%s", _("--running and --paused are mutually exclusive"));
-        return false;
-    }
+    VSH_EXCLUSIVE_OPTIONS("running", "paused");
 
     if (vshCommandOptStringReq(ctl, cmd, "file", &file) < 0)
         return false;
@@ -6351,7 +6357,9 @@ static const vshCmdOptDef opts_vcpupin[] = {
  * Helper function to print vcpupin info.
  */
 static bool
-virshPrintPinInfo(unsigned char *cpumap, size_t cpumaplen)
+virshPrintPinInfo(vshControl *ctl,
+                  unsigned char *cpumap,
+                  size_t cpumaplen)
 {
     char *str = NULL;
 
@@ -6362,6 +6370,68 @@ virshPrintPinInfo(unsigned char *cpumap, size_t cpumaplen)
     VIR_FREE(str);
     return true;
 }
+
+
+static bool
+virshVcpuPinQuery(vshControl *ctl,
+                  virDomainPtr dom,
+                  unsigned int vcpu,
+                  bool got_vcpu,
+                  int maxcpu,
+                  unsigned int flags)
+{
+    unsigned char *cpumap = NULL;
+    int cpumaplen;
+    size_t i;
+    int ncpus;
+    bool ret = false;
+
+    if ((ncpus = virshCPUCountCollect(ctl, dom, flags, true)) < 0) {
+        if (ncpus == -1) {
+            if (flags & VIR_DOMAIN_AFFECT_LIVE)
+                vshError(ctl, "%s", _("cannot get vcpupin for offline domain"));
+            else
+                vshError(ctl, "%s", _("cannot get vcpupin for transient domain"));
+        }
+        return false;
+    }
+
+    if (got_vcpu && vcpu >= ncpus) {
+        if (flags & VIR_DOMAIN_AFFECT_LIVE ||
+            (!(flags & VIR_DOMAIN_AFFECT_CONFIG) &&
+             virDomainIsActive(dom) == 1))
+            vshError(ctl,
+                     _("vcpu %d is out of range of live cpu count %d"),
+                     vcpu, ncpus);
+        else
+            vshError(ctl,
+                     _("vcpu %d is out of range of persistent cpu count %d"),
+                     vcpu, ncpus);
+        return false;
+    }
+
+    cpumaplen = VIR_CPU_MAPLEN(maxcpu);
+    cpumap = vshMalloc(ctl, ncpus * cpumaplen);
+    if ((ncpus = virDomainGetVcpuPinInfo(dom, ncpus, cpumap,
+                                         cpumaplen, flags)) >= 0) {
+        vshPrintExtra(ctl, "%s %s\n", _("VCPU:"), _("CPU Affinity"));
+        vshPrintExtra(ctl, "----------------------------------\n");
+        for (i = 0; i < ncpus; i++) {
+            if (got_vcpu && i != vcpu)
+                continue;
+
+            vshPrint(ctl, "%4zu: ", i);
+            ret = virshPrintPinInfo(ctl, VIR_GET_CPUMAP(cpumap, cpumaplen, i),
+                                    cpumaplen);
+            vshPrint(ctl, "\n");
+            if (!ret)
+                break;
+        }
+    }
+
+    return ret;
+}
+
 
 static unsigned char *
 virshParseCPUList(vshControl *ctl, int *cpumaplen,
@@ -6405,8 +6475,7 @@ cmdVcpuPin(vshControl *ctl, const vshCmd *cmd)
     bool ret = false;
     unsigned char *cpumap = NULL;
     int cpumaplen;
-    int maxcpu, ncpus;
-    size_t i;
+    int maxcpu;
     bool config = vshCommandOptBool(cmd, "config");
     bool live = vshCommandOptBool(cmd, "live");
     bool current = vshCommandOptBool(cmd, "current");
@@ -6421,9 +6490,6 @@ cmdVcpuPin(vshControl *ctl, const vshCmd *cmd)
         flags |= VIR_DOMAIN_AFFECT_CONFIG;
     if (live)
         flags |= VIR_DOMAIN_AFFECT_LIVE;
-    /* none of the options were specified */
-    if (!current && !live && !config)
-        flags = -1;
 
     if (vshCommandOptStringReq(ctl, cmd, "cpulist", &cpulist) < 0)
         return false;
@@ -6448,67 +6514,23 @@ cmdVcpuPin(vshControl *ctl, const vshCmd *cmd)
 
     /* Query mode: show CPU affinity information then exit.*/
     if (!cpulist) {
-        /* When query mode and neither "live", "config" nor "current"
-         * is specified, set VIR_DOMAIN_AFFECT_CURRENT as flags */
-        if (flags == -1)
-            flags = VIR_DOMAIN_AFFECT_CURRENT;
-
-        if ((ncpus = virshCPUCountCollect(ctl, dom, flags, true)) < 0) {
-            if (ncpus == -1) {
-                if (flags & VIR_DOMAIN_AFFECT_LIVE)
-                    vshError(ctl, "%s", _("cannot get vcpupin for offline domain"));
-                else
-                    vshError(ctl, "%s", _("cannot get vcpupin for transient domain"));
-            }
-            goto cleanup;
-        }
-
-        if (got_vcpu && vcpu >= ncpus) {
-            if (flags & VIR_DOMAIN_AFFECT_LIVE ||
-                (!(flags & VIR_DOMAIN_AFFECT_CONFIG) &&
-                 virDomainIsActive(dom) == 1))
-                vshError(ctl,
-                         _("vcpu %d is out of range of live cpu count %d"),
-                         vcpu, ncpus);
-            else
-                vshError(ctl,
-                         _("vcpu %d is out of range of persistent cpu count %d"),
-                         vcpu, ncpus);
-            goto cleanup;
-        }
-
-        cpumaplen = VIR_CPU_MAPLEN(maxcpu);
-        cpumap = vshMalloc(ctl, ncpus * cpumaplen);
-        if ((ncpus = virDomainGetVcpuPinInfo(dom, ncpus, cpumap,
-                                             cpumaplen, flags)) >= 0) {
-            vshPrintExtra(ctl, "%s %s\n", _("VCPU:"), _("CPU Affinity"));
-            vshPrintExtra(ctl, "----------------------------------\n");
-            for (i = 0; i < ncpus; i++) {
-                if (got_vcpu && i != vcpu)
-                    continue;
-
-                vshPrint(ctl, "%4zu: ", i);
-                ret = virshPrintPinInfo(VIR_GET_CPUMAP(cpumap, cpumaplen, i),
-                                        cpumaplen);
-                vshPrint(ctl, "\n");
-                if (!ret)
-                    break;
-            }
-        }
-    } else {
-        /* Pin mode: pinning specified vcpu to specified physical cpus*/
-        if (!(cpumap = virshParseCPUList(ctl, &cpumaplen, cpulist, maxcpu)))
-            goto cleanup;
-
-        if (flags == -1) {
-            if (virDomainPinVcpu(dom, vcpu, cpumap, cpumaplen) != 0)
-                goto cleanup;
-        } else {
-            if (virDomainPinVcpuFlags(dom, vcpu, cpumap, cpumaplen, flags) != 0)
-                goto cleanup;
-        }
-        ret = true;
+        ret = virshVcpuPinQuery(ctl, dom, vcpu, got_vcpu, maxcpu, flags);
+        goto cleanup;
     }
+
+    /* Pin mode: pinning specified vcpu to specified physical cpus*/
+    if (!(cpumap = virshParseCPUList(ctl, &cpumaplen, cpulist, maxcpu)))
+        goto cleanup;
+
+    /* use old API without any explicit flags */
+    if (flags == VIR_DOMAIN_AFFECT_CURRENT && !current) {
+        if (virDomainPinVcpu(dom, vcpu, cpumap, cpumaplen) != 0)
+            goto cleanup;
+    } else {
+        if (virDomainPinVcpuFlags(dom, vcpu, cpumap, cpumaplen, flags) != 0)
+            goto cleanup;
+    }
+    ret = true;
 
  cleanup:
     VIR_FREE(cpumap);
@@ -6597,7 +6619,7 @@ cmdEmulatorPin(vshControl *ctl, const vshCmd *cmd)
             vshPrintExtra(ctl, "%s %s\n", _("emulator:"), _("CPU Affinity"));
             vshPrintExtra(ctl, "----------------------------------\n");
             vshPrintExtra(ctl, "       *: ");
-            ret = virshPrintPinInfo(cpumap, cpumaplen);
+            ret = virshPrintPinInfo(ctl, cpumap, cpumaplen);
             vshPrint(ctl, "\n");
         }
         goto cleanup;
@@ -6773,7 +6795,7 @@ cmdIOThreadInfo(vshControl *ctl, const vshCmd *cmd)
     for (i = 0; i < niothreads; i++) {
 
         vshPrint(ctl, " %-15u ", info[i]->iothread_id);
-        ignore_value(virshPrintPinInfo(info[i]->cpumap, info[i]->cpumaplen));
+        ignore_value(virshPrintPinInfo(ctl, info[i]->cpumap, info[i]->cpumaplen));
         vshPrint(ctl, "\n");
         virDomainIOThreadInfoFree(info[i]);
     }
@@ -7866,9 +7888,9 @@ cmdMetadata(vshControl *ctl, const vshCmd *cmd)
             goto cleanup;
 
         if (rem)
-            vshPrint("%s\n", _("Metadata removed"));
+            vshPrint(ctl, "%s\n", _("Metadata removed"));
         else
-            vshPrint("%s\n", _("Metadata modified"));
+            vshPrint(ctl, "%s\n", _("Metadata modified"));
     } else if (edit) {
 #define EDIT_GET_XML \
         virshDomainGetEditMetadata(ctl, dom, uri, flags)
@@ -7884,7 +7906,7 @@ cmdMetadata(vshControl *ctl, const vshCmd *cmd)
                               key, uri, flags) == 0)
 #include "virsh-edit.c"
 
-        vshPrint("%s\n", _("Metadata modified"));
+        vshPrint(ctl, "%s\n", _("Metadata modified"));
     } else {
         char *data;
         /* get */
@@ -9831,6 +9853,8 @@ cmdMigrate(vshControl *ctl, const vshCmd *cmd)
     bool live_flag = false;
     virshCtrlData data = { .dconn = NULL };
 
+    VSH_EXCLUSIVE_OPTIONS("live", "offline");
+
     if (!(dom = virshCommandOptDomain(ctl, cmd, NULL)))
         return false;
 
@@ -11043,6 +11067,7 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
 {
     xmlNodePtr tmp = NULL;
     xmlNodePtr source = NULL;
+    xmlNodePtr backingStore = NULL;
     xmlNodePtr target_node = NULL;
     xmlNodePtr text_node = NULL;
     char *device_type = NULL;
@@ -11083,11 +11108,20 @@ virshUpdateDiskXML(xmlNodePtr disk_node,
         if (xmlStrEqual(tmp->name, BAD_CAST "target"))
             target_node = tmp;
 
+        if (xmlStrEqual(tmp->name, BAD_CAST "backingStore"))
+            backingStore = tmp;
+
         /*
          * We've found all we needed.
          */
-        if (source && target_node)
+        if (source && target_node && backingStore)
             break;
+    }
+
+    /* drop the <backingStore> subtree since it would become invalid */
+    if (backingStore) {
+        xmlUnlinkNode(backingStore);
+        xmlFreeNode(backingStore);
     }
 
     if (type == VIRSH_UPDATE_DISK_XML_EJECT) {

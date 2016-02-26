@@ -1,5 +1,5 @@
 /*
- * xlconfigtest.c: Test backend for xl_internal config file handling
+ * xlconfigtest.c: Test xl.cfg(5) <-> domXML config conversions
  *
  * Copyright (C) 2007, 2010-2011, 2014 Red Hat, Inc.
  * Copyright (c) 2015 SUSE LINUX Products GmbH, Nuernberg, Germany.
@@ -42,20 +42,22 @@
 
 static virCapsPtr caps;
 static virDomainXMLOptionPtr xmlopt;
+
 /*
- * parses the xml, creates a domain def and compare with equivalent xm config
+ * Parses domXML to virDomainDef object, which is then converted to xl.cfg(5)
+ * config and compared with expected config.
  */
 static int
-testCompareParseXML(const char *xmcfg, const char *xml)
+testCompareParseXML(const char *xlcfg, const char *xml)
 {
-    char *gotxmcfgData = NULL;
+    char *gotxlcfgData = NULL;
     virConfPtr conf = NULL;
     virConnectPtr conn = NULL;
     int wrote = 4096;
     int ret = -1;
     virDomainDefPtr def = NULL;
 
-    if (VIR_ALLOC_N(gotxmcfgData, wrote) < 0)
+    if (VIR_ALLOC_N(gotxlcfgData, wrote) < 0)
         goto fail;
 
     conn = virGetConnect();
@@ -73,17 +75,17 @@ testCompareParseXML(const char *xmcfg, const char *xml)
     if (!(conf = xenFormatXL(def, conn)))
         goto fail;
 
-    if (virConfWriteMem(gotxmcfgData, &wrote, conf) < 0)
+    if (virConfWriteMem(gotxlcfgData, &wrote, conf) < 0)
         goto fail;
-    gotxmcfgData[wrote] = '\0';
+    gotxlcfgData[wrote] = '\0';
 
-    if (virtTestCompareToFile(gotxmcfgData, xmcfg) < 0)
+    if (virtTestCompareToFile(gotxlcfgData, xlcfg) < 0)
         goto fail;
 
     ret = 0;
 
  fail:
-    VIR_FREE(gotxmcfgData);
+    VIR_FREE(gotxlcfgData);
     if (conf)
         virConfFree(conf);
     virDomainDefFree(def);
@@ -91,13 +93,15 @@ testCompareParseXML(const char *xmcfg, const char *xml)
 
     return ret;
 }
+
 /*
- * parses the xl config, develops domain def and compares with equivalent xm config
+ * Parses xl.cfg(5) config to virDomainDef object, which is then converted to
+ * domXML and compared to expected XML.
  */
 static int
-testCompareFormatXML(const char *xmcfg, const char *xml)
+testCompareFormatXML(const char *xlcfg, const char *xml)
 {
-    char *xmcfgData = NULL;
+    char *xlcfgData = NULL;
     char *gotxml = NULL;
     virConfPtr conf = NULL;
     int ret = -1;
@@ -107,16 +111,16 @@ testCompareFormatXML(const char *xmcfg, const char *xml)
     conn = virGetConnect();
     if (!conn) goto fail;
 
-    if (virtTestLoadFile(xmcfg, &xmcfgData) < 0)
+    if (virtTestLoadFile(xlcfg, &xlcfgData) < 0)
         goto fail;
 
-    if (!(conf = virConfReadMem(xmcfgData, strlen(xmcfgData), 0)))
+    if (!(conf = virConfReadMem(xlcfgData, strlen(xlcfgData), 0)))
         goto fail;
 
     if (!(def = xenParseXL(conf, caps, xmlopt)))
         goto fail;
 
-    if (!(gotxml = virDomainDefFormat(def, VIR_DOMAIN_XML_INACTIVE |
+    if (!(gotxml = virDomainDefFormat(def, caps, VIR_DOMAIN_XML_INACTIVE |
                                       VIR_DOMAIN_XML_SECURE)))
         goto fail;
 
@@ -128,7 +132,7 @@ testCompareFormatXML(const char *xmcfg, const char *xml)
  fail:
     if (conf)
         virConfFree(conf);
-    VIR_FREE(xmcfgData);
+    VIR_FREE(xlcfgData);
     VIR_FREE(gotxml);
     virDomainDefFree(def);
     virObjectUnref(conn);
@@ -204,6 +208,8 @@ mymain(void)
 
     DO_TEST("paravirt-maxvcpus");
     DO_TEST("new-disk");
+    DO_TEST_FORMAT("disk-positional-parms-full");
+    DO_TEST_FORMAT("disk-positional-parms-partial");
     DO_TEST("spice");
     DO_TEST("spice-features");
     DO_TEST("vif-rate");
@@ -211,6 +217,7 @@ mymain(void)
     DO_TEST("paravirt-cmdline");
     DO_TEST_FORMAT("paravirt-cmdline-extra-root");
     DO_TEST_FORMAT("paravirt-cmdline-bogus-extra-root");
+    DO_TEST("rbd-multihost-noauth");
 
 #ifdef LIBXL_HAVE_BUILDINFO_USBDEVICE_LIST
     DO_TEST("fullvirt-multiusb");
