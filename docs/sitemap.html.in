@@ -266,6 +266,10 @@
                 <a href="drvbhyve.html">Bhyve</a>
                 <span>Driver for bhyve</span>
               </li>
+              <li>
+                <a href="drvjailhouse.html">Jailhouse</a>
+                <span>Driver for Jailhouse</span>
+              </li>
             </ul>
           </li>
           <li>

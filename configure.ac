@@ -1087,6 +1087,12 @@ dnl
 LIBVIRT_DRIVER_CHECK_BHYVE
 
 dnl
+dnl Checks for Jailhouse driver
+dnl
+
+LIBVIRT_DRIVER_CHECK_JAILHOUSE
+
+dnl
 dnl check for shell that understands <> redirection without truncation,
 dnl needed by src/qemu/qemu_monitor_{text,json}.c.
 dnl
@@ -2830,6 +2836,7 @@ AC_MSG_NOTICE([      ESX: $with_esx])
 AC_MSG_NOTICE([  Hyper-V: $with_hyperv])
 LIBVIRT_DRIVER_RESULT_VZ
 LIBVIRT_DRIVER_RESULT_BHYVE
+LIBVIRT_DRIVER_RESULT_JAILHOUSE
 AC_MSG_NOTICE([     Test: $with_test])
 AC_MSG_NOTICE([   Remote: $with_remote])
 AC_MSG_NOTICE([  Network: $with_network])

@@ -582,6 +582,7 @@ DRIVER_SOURCE_FILES = \
 
 STATEFUL_DRIVER_SOURCE_FILES = \
 	$(BHYVE_DRIVER_SOURCES) \
+	$(JAILHOUSE_DRIVER_SOURCES) \
 	$(INTERFACE_DRIVER_SOURCES) \
 	$(LIBXL_DRIVER_SOURCES) \
 	$(LXC_DRIVER_SOURCES) \
@@ -1456,6 +1457,14 @@ libvirt_driver_bhyve_impl_la_LDFLAGS = $(AM_LDFLAGS)
 libvirt_driver_bhyve_impl_la_SOURCES = $(BHYVE_DRIVER_SOURCES)
 endif WITH_BHYVE
 
+if WITH_JAILHOUSE
+noinst_LTLIBRARIES += libvirt_driver_jailhouse.la
+libvirt_la_BUILT_LIBADD += libvirt_driver_jailhouse.la
+libvirt_driver_jailhouse_la_CFLAGS = \
+    -I$(srcdir)/conf $(AM_CFLAGS)
+libvirt_driver_jailhouse_la_SOURCES = $(JAILHOUSE_DRIVER_SOURCES)
+endif WITH_JAILHOUSE
+
 if WITH_NETWORK
 noinst_LTLIBRARIES += libvirt_driver_network_impl.la
 libvirt_driver_network_la_SOURCES =
@@ -1801,6 +1810,7 @@ EXTRA_DIST +=							\
 		$(HYPERV_DRIVER_EXTRA_DIST)			\
 		$(VZ_DRIVER_SOURCES)				\
 		$(BHYVE_DRIVER_SOURCES)				\
+		$(JAILHOUSE_DRIVER_SOURCES)         \
 		$(NETWORK_DRIVER_SOURCES)			\
 		$(INTERFACE_DRIVER_SOURCES)			\
 		$(STORAGE_DRIVER_SOURCES)			\
