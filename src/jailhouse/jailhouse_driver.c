@@ -239,7 +239,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
 {
     virCheckFlags(0, VIR_DRV_OPEN_ERROR);
     virJailhouseDriverPtr driver;
-    if (conn->uri->scheme == NULL ||
+    if (conn-> == NULL || conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
         return VIR_DRV_OPEN_DECLINED;
     if (conn->uri->path != NULL && STRNEQ(conn->uri->path, "/")) {
