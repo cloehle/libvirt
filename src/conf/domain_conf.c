@@ -145,7 +145,8 @@ VIR_ENUM_IMPL(virDomainVirt, VIR_DOMAIN_VIRT_LAST,
               "vbox",
               "phyp",
               "parallels",
-              "bhyve")
+              "bhyve",
+              "jailhouse")
 
 VIR_ENUM_IMPL(virDomainBoot, VIR_DOMAIN_BOOT_LAST,
               "fd",

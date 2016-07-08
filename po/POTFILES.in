@@ -55,6 +55,7 @@ src/hyperv/hyperv_wmi.c
 src/interface/interface_backend_netcf.c
 src/interface/interface_backend_udev.c
 src/internal.h
+src/jailhouse/jailhouse_driver.c
 src/libvirt.c
 src/libvirt-lxc.c
 src/libvirt-qemu.c
