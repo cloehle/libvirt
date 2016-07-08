@@ -239,7 +239,7 @@ jailhouseConnectOpen(virConnectPtr conn, virConnectAuthPtr auth ATTRIBUTE_UNUSED
 {
     virCheckFlags(0, VIR_DRV_OPEN_ERROR);
     virJailhouseDriverPtr driver;
-    if (conn-> == NULL || conn->uri->scheme == NULL ||
+    if (conn->uri == NULL || conn->uri->scheme == NULL ||
             STRNEQ(conn->uri->scheme, "jailhouse"))
         return VIR_DRV_OPEN_DECLINED;
     if (conn->uri->path != NULL && STRNEQ(conn->uri->path, "/")) {
@@ -487,8 +487,7 @@ jailhouseDomainGetXMLDesc(virDomainPtr domain, unsigned int flags)
     virCheckFlags(VIR_DOMAIN_XML_SECURE | VIR_DOMAIN_XML_INACTIVE, NULL);
     char* xml;
     virDomainDefPtr domainDef = virDomainDefNewFull(domain->name, domain->uuid, domain->id);
-    virCapsPtr caps = virCapabilitiesNew(VIR_ARCH_NONE, false, false);
-    xml = virDomainDefFormat(domainDef, caps, 0);
+    xml = virDomainDefFormat(domainDef, 0);
     virDomainDefFree(domainDef);
     return xml;
 }
