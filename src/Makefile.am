@@ -861,6 +861,11 @@ BHYVE_DRIVER_SOURCES =						\
 		bhyve/bhyve_utils.h				\
 		$(NULL)
 
+JAILHOUSE_DRIVER_SOURCES =                      \
+        jailhouse/jailhouse_driver.c        \
+        jailhouse/jailhouse_driver.h        \
+        $(NULL)
+
 NETWORK_DRIVER_SOURCES =					\
 		network/bridge_driver.h network/bridge_driver.c \
 		network/bridge_driver_platform.h 		\
