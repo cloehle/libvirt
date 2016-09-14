@@ -11,7 +11,6 @@ Documentation=man:libvirtd(8)
 Documentation=http://libvirt.org
 
 [Service]
-Type=notify
 EnvironmentFile=-/etc/sysconfig/libvirtd
 ExecStart=@sbindir@/libvirtd $LIBVIRTD_ARGS
 ExecReload=/bin/kill -HUP $MAINPID
