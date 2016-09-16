@@ -169,7 +169,7 @@ static virDomainPtr
 virJailhouseCellToDomainPtr(virConnectPtr conn,  virJailhouseCellPtr cell)
 {
     virDomainPtr dom = virGetDomain(conn, cell->name, cell->uuid);
-    if (cell->state == STATERUNNING || STATERUNNINGLOCKED)
+    if (cell->state == STATERUNNING || cell->state == STATERUNNINGLOCKED)
         dom->id = cell->id;
     else dom->id = -1;
     return dom;
