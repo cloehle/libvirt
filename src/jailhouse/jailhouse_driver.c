@@ -431,10 +431,13 @@ static int
 jailhouseDomainDestroy(virDomainPtr domain)
 {
     int resultcode;
+    virJailhouseCellPtr cell = virDomainPtrToCell(domain);
+    if (cell == NULL)
+        return -1;
     virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "shutdown");
-    virCommandAddArgFormat(cmd, "%d", domain->id);
+    virCommandAddArgFormat(cmd, "%d", cell->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
     virCommandFree(cmd);
@@ -447,10 +450,13 @@ static int
 jailhouseDomainCreate(virDomainPtr domain)
 {
     int resultcode;
+    virJailhouseCellPtr cell = virDomainPtrToCell(domain);
+    if (cell == NULL)
+        return -1;
     virCommandPtr cmd = virCommandNew(JAILHOUSEBINARY);
     virCommandAddArg(cmd, "cell");
     virCommandAddArg(cmd, "start");
-    virCommandAddArgFormat(cmd, "%d", domain->id);
+    virCommandAddArgFormat(cmd, "%d", cell->id);
     virCommandAddEnvPassCommon(cmd);
     resultcode = virCommandRun(cmd, NULL);
     virCommandFree(cmd);
