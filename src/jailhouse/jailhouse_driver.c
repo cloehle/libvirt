@@ -104,18 +104,12 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
         return -1;
     if (STREQLEN(state, STATERUNNINGSTRING, STATELENGTH))
         cells[count-1].state = STATERUNNING;
-    else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH)) {
+    else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH))
         cells[count-1].state = STATESHUTDOWN;
-        cells[count-1].id = -1;
-    }
-    else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH)) {
+    else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
         cells[count-1].state = STATERUNNINGLOCKED;
-        cells[count-1].id = -1;
-    }
-    else {
+    else
         cells[count-1].state = STATEFAILED;
-        cells[count-1].id = -1;
-    }
     if (groups[3][0] == '\0')
         cells[count-1].assignedCPUs = NULL;
     else virBitmapParse(groups[3], 0, &cells[count-1].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
@@ -175,7 +169,9 @@ static virDomainPtr
 virJailhouseCellToDomainPtr(virConnectPtr conn,  virJailhouseCellPtr cell)
 {
     virDomainPtr dom = virGetDomain(conn, cell->name, cell->uuid);
-    dom->id = cell->id;
+    if (cell->state == STATERUNNING || STATERUNNINGLOCKED)
+        dom->id = cell->id;
+    else dom->id = -1;
     return dom;
 }
 
@@ -235,7 +231,7 @@ virDomainPtrToCell(virDomainPtr dom)
     cellsCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
-        if (dom->id == cells[i].id)
+        if (strncmp(cells[i].name, dom->name, NAMELENGTH+1))
                 return cells+i;
     return NULL;
 }
