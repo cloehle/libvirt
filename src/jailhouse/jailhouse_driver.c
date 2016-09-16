@@ -231,7 +231,7 @@ virDomainPtrToCell(virDomainPtr dom)
     cellsCount = driver->lastQueryCellsCount;
     virJailhouseCellPtr cells = driver->lastQueryCells;
     for (i = 0; i < cellsCount; i++)
-        if (strncmp(cells[i].name, dom->name, NAMELENGTH+1))
+        if (!strncmp(cells[i].name, dom->name, NAMELENGTH+1))
                 return cells+i;
     return NULL;
 }
