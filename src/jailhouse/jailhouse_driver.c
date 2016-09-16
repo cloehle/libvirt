@@ -297,13 +297,17 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
     virJailhouseCellPtr cells;
     size_t cellsCount;
     size_t i;
+    size_t j = 0;
     if (virJailhouseGetCurrentCellList(conn) == -1)
         return -1;
     cellsCount = driver->lastQueryCellsCount;
     cells = driver->lastQueryCells;
-    for (i = 0; i < maxids && i < cellsCount; i++)
-        ids[i] = cells[i].id;
-    return i;
+    for (i = 0; i < maxids && i < cellsCount; i++) {
+        if (cells[i].state == STATERUNNING ||
+            cells[i].state == STATERUNNINGLOCKED)
+        ids[j++] = cells[i].id;
+    }
+    return j;
 }
 
 static int
