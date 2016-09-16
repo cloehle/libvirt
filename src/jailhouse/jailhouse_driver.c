@@ -104,12 +104,18 @@ static int virJailhouseParseListOutputCallback(char **const groups, void *data)
         return -1;
     if (STREQLEN(state, STATERUNNINGSTRING, STATELENGTH))
         cells[count-1].state = STATERUNNING;
-    else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH))
+    else if (STREQLEN(state, STATESHUTDOWNSTRING, STATELENGTH)) {
         cells[count-1].state = STATESHUTDOWN;
-    else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH))
+        cells[count-1].id = -1;
+    }
+    else if (STREQLEN(state, STATERUNNINGLOCKEDSTRING, STATELENGTH)) {
         cells[count-1].state = STATERUNNINGLOCKED;
-    else
+        cells[count-1].id = -1;
+    }
+    else {
         cells[count-1].state = STATEFAILED;
+        cells[count-1].id = -1;
+    }
     if (groups[3][0] == '\0')
         cells[count-1].assignedCPUs = NULL;
     else virBitmapParse(groups[3], 0, &cells[count-1].assignedCPUs, VIR_DOMAIN_CPUMASK_LEN);
@@ -303,9 +309,8 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
     cellsCount = driver->lastQueryCellsCount;
     cells = driver->lastQueryCells;
     for (i = 0; i < maxids && i < cellsCount; i++) {
-        if (cells[i].state == STATERUNNING ||
-            cells[i].state == STATERUNNINGLOCKED)
-        ids[j++] = cells[i].id;
+        if (cells[i].id != -1)
+            ids[j++] = cells[i].id;
     }
     return j;
 }
