@@ -314,7 +314,7 @@ jailhouseConnectListDomains(virConnectPtr conn, int * ids, int maxids)
 static int
 jailhouseConnectListAllDomains(virConnectPtr conn, virDomainPtr ** domains, unsigned int flags)
 {
-    virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, 0);
+    virCheckFlags(VIR_CONNECT_LIST_DOMAINS_ACTIVE, -1);
     virJailhouseDriverPtr driver = (virJailhouseDriverPtr)conn->privateData;
     virJailhouseCellPtr cells;
     size_t cellsCount;
@@ -419,7 +419,7 @@ static int
 jailhouseDomainGetState(virDomainPtr domain, int *state,
                         int *reason ATTRIBUTE_UNUSED, unsigned int flags)
 {
-    virCheckFlags(0, 0);
+    virCheckFlags(0, -1);
     virJailhouseCellPtr cell = virDomainPtrToCell(domain);
     if (cell == NULL)
         return -1;
